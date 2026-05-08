@@ -572,33 +572,28 @@
   <!-- ================= SCRIPT ================= -->
   <script>
   /* ============================================================
-     SDS SERVICE DASHBOARD — CONFIG
+     SDS SERVICE DASHBOARD
      ------------------------------------------------------------
-     The Jira API token is NOT in this file. It lives as a secret
-     inside the Cloudflare Worker that JIRA_BASE points to. The
-     Worker injects the Authorization header before forwarding to
-     seedtag.atlassian.net. The browser only sees the Worker URL.
+     The browser is a thin renderer. All data — including
+     calendar-aware business minutes per status — is computed
+     server-side by the Cloudflare Worker that owns the D1
+     database and the Jira credentials.
 
-     The password gate below is cosmetic — anyone reading this
-     file can call the Worker URL directly. The Worker is locked
-     to known origins to limit abuse.
+     Endpoints used:
+       GET  /api/dashboard?market=...&from=YYYY-MM-DD&to=YYYY-MM-DD
+       GET  /api/issue?key=SDS-1234        (timeline for row expand)
+       GET  /api/meta                      (last sync timestamp)
+
+     The password gate is cosmetic. The Worker enforces origin
+     allow-listing.
      ============================================================ */
 
   const CONFIG = {
     PASSWORD: "SDS2026",
-    // The dashboard talks to a Cloudflare Worker that holds the Jira
-    // credentials server-side and proxies to seedtag.atlassian.net.
-    // Never put a Jira token here — the Worker injects it.
-    JIRA_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    PROJECT: "SDS",
-    JQL: "project = SDS ORDER BY created DESC",
-    PAGE_SIZE: 100,
-    MAX_PAGES: 20,                  // safety cap → up to 2,000 issues
-    CACHE_KEY: "sds-dashboard-v1",
-    CACHE_TTL_MIN: 30,
+    API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
+    CACHE_KEY: "sds-dashboard-v3",
+    CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
-    DONE_STATUS: "Done",
-    WAITING_STATUS: "Waiting for customer",
   };
 
   const COLOR = {
@@ -610,20 +605,13 @@
     grey5:  "#2F2E2E",
   };
 
-  // Custom field IDs in the SDS Jira project (verified via /rest/api/3/field).
-  const FIELDS = {
-    OPERATOR_ENTITY: "customfield_14324",
-    DELIVERY_TYPE:   "customfield_15042",
-    NUM_FORMATS:     "customfield_15827",
-  };
-
   /* ===================== UTIL ===================== */
   const $ = (id) => document.getElementById(id);
   const fmtMin = (m) => {
     if (m == null || isNaN(m)) return "—";
     if (m < 60) return Math.round(m) + "m";
     const h = m / 60;
-    if (h < 48) return h.toFixed(1) + "h";
+    if (h < 24) return h.toFixed(1) + "h";
     const d = h / 24;
     return d.toFixed(1) + "d";
   };
@@ -632,29 +620,17 @@
     return (m / 60).toFixed(1);
   };
   const isoDay = (d) => d.toISOString().slice(0, 10);
-  const startOfWeek = (d) => {
-    const x = new Date(d);
-    const day = (x.getDay() + 6) % 7;     // Monday = 0
-    x.setDate(x.getDate() - day);
-    x.setHours(0, 0, 0, 0);
-    return x;
-  };
-  const inRange = (d, from, to) => {
-    if (!d) return false;
-    const t = +d;
-    if (from && t < +from) return false;
-    if (to && t > +to) return false;
-    return true;
-  };
-
-  // No-op: auth is now injected server-side by the Cloudflare Worker.
-  // We keep this signature so other call sites stay simple.
-  function authHeader() { return null; }
+  const escapeHtml = (s) => String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
   /* ===================== CACHE ===================== */
-  function loadCache() {
+  function cacheKey(params) {
+    return CONFIG.CACHE_KEY + ":" + JSON.stringify(params);
+  }
+  function loadCache(params) {
     try {
-      const raw = localStorage.getItem(CONFIG.CACHE_KEY);
+      const raw = localStorage.getItem(cacheKey(params));
       if (!raw) return null;
       const obj = JSON.parse(raw);
       const ageMin = (Date.now() - obj.ts) / 60000;
@@ -662,206 +638,44 @@
       return obj;
     } catch (e) { return null; }
   }
-  function saveCache(issues) {
+  function saveCache(params, data) {
     try {
-      const payload = { ts: Date.now(), issues };
-      localStorage.setItem(CONFIG.CACHE_KEY, JSON.stringify(payload));
-    } catch (e) {
-      console.warn("Cache save failed:", e);
-    }
-  }
-  function clearCache() {
-    localStorage.removeItem(CONFIG.CACHE_KEY);
+      localStorage.setItem(cacheKey(params), JSON.stringify({ ts: Date.now(), data }));
+    } catch (e) { console.warn("cache save failed", e); }
   }
 
-  /* ===================== JIRA FETCH ===================== */
-  async function jiraFetch(path) {
-    const res = await fetch(CONFIG.JIRA_BASE + path, {
-      headers: {
-        "Accept": "application/json",
-      },
+  /* ===================== API ===================== */
+  async function apiGet(path) {
+    const res = await fetch(CONFIG.API_BASE + path, {
+      headers: { "Accept": "application/json" },
       mode: "cors",
     });
     if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status} on ${path} :: ${txt.slice(0,160)}`);
+      const t = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status} on ${path} :: ${t.slice(0,160)}`);
     }
     return res.json();
   }
-
-  async function fetchAllIssues(onProgress) {
-    // Use the modern /search/jql endpoint with nextPageToken pagination
-    const issues = [];
-    let token = null;
-    let page = 0;
-    const fields = [
-      "summary", "status", "created", "resolutiondate", "issuetype",
-      FIELDS.OPERATOR_ENTITY, FIELDS.DELIVERY_TYPE, FIELDS.NUM_FORMATS,
-    ].join(",");
-
-    while (page < CONFIG.MAX_PAGES) {
-      const params = new URLSearchParams({
-        jql: CONFIG.JQL,
-        fields: fields,
-        expand: "changelog,names",
-        maxResults: String(CONFIG.PAGE_SIZE),
-      });
-      if (token) params.set("nextPageToken", token);
-      const path = `/rest/api/3/search/jql?${params.toString()}`;
-      const data = await jiraFetch(path);
-
-      const batch = data.issues || [];
-      issues.push(...batch);
-      page++;
-      if (onProgress) onProgress(issues.length, data.total || null);
-
-      // Newer endpoint: nextPageToken / isLast
-      if (data.isLast || batch.length < CONFIG.PAGE_SIZE) break;
-      token = data.nextPageToken;
-      if (!token) break;
-    }
-    return issues;
+  async function fetchDashboard({ market, from, to }) {
+    const params = new URLSearchParams();
+    if (market && market.length) params.set("market", market.join(","));
+    if (from) params.set("from", from);
+    if (to)   params.set("to",   to);
+    return apiGet("/api/dashboard?" + params.toString());
   }
-
-  /* ===================== ISSUE PARSING ===================== */
-  function findCustomFieldValue(rawIssue, names, candidates) {
-    // names: { "customfield_xxxx": "Operator Entity", ... }
-    for (const cand of candidates) {
-      for (const [id, label] of Object.entries(names || {})) {
-        if (label && label.toLowerCase() === cand.toLowerCase()) {
-          const v = rawIssue.fields[id];
-          if (v == null) return null;
-          if (typeof v === "string" || typeof v === "number") return v;
-          if (Array.isArray(v)) return v.map(x => x?.value || x?.name || x).join(", ");
-          if (typeof v === "object") return v.value || v.name || null;
-        }
-      }
-    }
-    return null;
-  }
-
-  function readOption(v) {
-    if (v == null) return null;
-    if (typeof v === "string" || typeof v === "number") return v;
-    if (Array.isArray(v)) return v.map(x => x?.value || x?.name || x).join(", ");
-    if (typeof v === "object") return v.value || v.name || null;
-    return null;
-  }
-
-  function parseIssue(rawIssue) {
-    const f = rawIssue.fields || {};
-
-    const market = readOption(f[FIELDS.OPERATOR_ENTITY]) || "—";
-    const deliveryType = readOption(f[FIELDS.DELIVERY_TYPE]) || "—";
-    const numFormats = f[FIELDS.NUM_FORMATS] ?? null;
-
-    // Build full timeline from changelog: [{ at, from, to }]
-    const timeline = [];
-    const histories = (rawIssue.changelog && rawIssue.changelog.histories) || [];
-    histories
-      .slice()
-      .sort((a, b) => new Date(a.created) - new Date(b.created))
-      .forEach(h => {
-        (h.items || []).forEach(it => {
-          if (it.field === "status") {
-            timeline.push({
-              at: new Date(h.created),
-              from: it.fromString || null,
-              to: it.toString || null,
-            });
-          }
-        });
-      });
-
-    // Determine current status
-    const currentStatus = (f.status && f.status.name) || (timeline.length ? timeline[timeline.length-1].to : "—");
-    const created = f.created ? new Date(f.created) : null;
-
-    // Initial status = "from" of first transition (or current if no transitions)
-    const initialStatus = timeline.length
-      ? (timeline[0].from || currentStatus)
-      : currentStatus;
-
-    // Time spent in each status:
-    // walk transitions; last segment goes from last 'at' to either resolutiondate (if Done) or now.
-    const now = new Date();
-    const segments = [];     // {status, start, end}
-    let segStatus = initialStatus;
-    let segStart = created;
-    for (const t of timeline) {
-      segments.push({ status: segStatus, start: segStart, end: t.at });
-      segStatus = t.to;
-      segStart = t.at;
-    }
-    // final open segment
-    const isDone = currentStatus && currentStatus.toLowerCase() === CONFIG.DONE_STATUS.toLowerCase();
-    const finalEnd = isDone && f.resolutiondate ? new Date(f.resolutiondate) : now;
-    segments.push({ status: segStatus, start: segStart, end: finalEnd });
-
-    // accumulators
-    let waitingMs = 0;
-    let totalMsToFinalDone = 0;
-    const statusTotals = {};
-    for (const s of segments) {
-      if (!s.start || !s.end) continue;
-      const dur = Math.max(0, +s.end - +s.start);
-      statusTotals[s.status] = (statusTotals[s.status] || 0) + dur;
-      if (s.status && s.status.toLowerCase() === CONFIG.WAITING_STATUS.toLowerCase()) {
-        waitingMs += dur;
-      }
-    }
-
-    // Done timestamps (every transition where toString === Done)
-    const doneTransitions = timeline.filter(t =>
-      t.to && t.to.toLowerCase() === CONFIG.DONE_STATUS.toLowerCase()
-    );
-    const doneVisits = doneTransitions.length;
-    const corrections = Math.max(0, doneVisits - 1);
-    const isFirstTime = doneVisits === 1;
-
-    // Last delivery timestamp
-    const lastDoneAt = doneTransitions.length
-      ? doneTransitions[doneTransitions.length - 1].at
-      : (isDone && f.resolutiondate ? new Date(f.resolutiondate) : null);
-
-    // Total time from creation to last delivery (or "now" if not delivered)
-    const totalEnd = lastDoneAt || now;
-    const totalMs = created ? Math.max(0, +totalEnd - +created) : 0;
-    const designMs = Math.max(0, totalMs - waitingMs);
-
-    return {
-      key: rawIssue.key,
-      url: `https://seedtag.atlassian.net/browse/${rawIssue.key}`,
-      summary: f.summary || "",
-      market: String(market || "—").toUpperCase(),
-      deliveryType: deliveryType || "—",
-      numFormats: numFormats || null,
-      status: currentStatus,
-      created: created ? created.toISOString() : null,
-      deliveredAt: lastDoneAt ? lastDoneAt.toISOString() : null,
-      isDelivered: !!lastDoneAt,
-      isInProgress: !isDone,
-      designMin: Math.round(designMs / 60000),
-      waitingMin: Math.round(waitingMs / 60000),
-      totalMin: Math.round(totalMs / 60000),
-      doneVisits,
-      corrections,
-      isFirstTime,
-      timeline: timeline.map(t => ({
-        at: t.at.toISOString(), from: t.from, to: t.to
-      })),
-      statusTotals,
-    };
+  async function fetchIssue(key) {
+    return apiGet("/api/issue?key=" + encodeURIComponent(key));
   }
 
   /* ===================== STATE ===================== */
   const STATE = {
-    issues: [],          // parsed
-    filtered: [],
+    data: null,            // last API payload
+    filters: { market: [], from: "", to: "" },
     sortKey: "deliveredAt",
     sortDir: -1,
     search: "",
     charts: {},
+    knownMarkets: [],      // populated from first payload
   };
 
   /* ===================== FILTERS ===================== */
@@ -870,243 +684,131 @@
     const toVal = $("filterTo").value;
     const sel = $("filterMarket");
     const markets = Array.from(sel.selectedOptions).map(o => o.value);
-    return {
-      from: fromVal ? new Date(fromVal) : null,
-      to: toVal ? new Date(toVal + "T23:59:59") : null,
-      markets: markets.length ? markets : null,
-    };
+    return { market: markets, from: fromVal || "", to: toVal || "" };
   }
 
-  function applyFilters() {
-    const { from, to, markets } = getFilters();
-    const term = STATE.search.toLowerCase().trim();
-    STATE.filtered = STATE.issues.filter(it => {
-      if (markets && !markets.includes(it.market)) return false;
-      if (term) {
-        const blob = `${it.key} ${it.summary} ${it.market} ${it.deliveryType} ${it.status}`.toLowerCase();
-        if (!blob.includes(term)) return false;
-      }
-      // Date filter: prefer deliveredAt; if not delivered, use created
-      const ref = it.deliveredAt ? new Date(it.deliveredAt) : (it.created ? new Date(it.created) : null);
-      if (from && ref && +ref < +from) return false;
-      if (to && ref && +ref > +to) return false;
-      return true;
-    });
-    render();
-  }
-
-  function setupMarketFilter() {
+  function setupMarketFilter(markets) {
     const sel = $("filterMarket");
-    const known = new Set();
-    STATE.issues.forEach(it => { if (it.market) known.add(it.market); });
-    // EMEA first, then any extras
+    if (!markets.length) return;
     const list = [
-      ...CONFIG.EMEA_MARKETS.filter(m => known.has(m)),
-      ...Array.from(known).filter(m => !CONFIG.EMEA_MARKETS.includes(m)).sort(),
+      ...CONFIG.EMEA_MARKETS.filter(m => markets.includes(m)),
+      ...markets.filter(m => !CONFIG.EMEA_MARKETS.includes(m)).sort(),
     ];
     sel.innerHTML = list.map(m => `<option value="${m}">${m}</option>`).join("");
     sel.size = Math.min(7, Math.max(3, list.length));
   }
 
   /* ===================== RENDER ===================== */
-  function renderKPIs() {
-    const data = STATE.filtered;
-    const delivered = data.filter(d => d.isDelivered);
-    const deliveredCount = delivered.length;
-
-    const designMins = delivered.map(d => d.designMin);
-    const avgDesign = designMins.length
-      ? designMins.reduce((a,b) => a+b, 0) / designMins.length
-      : null;
-
-    const firstTimeCount = delivered.filter(d => d.isFirstTime).length;
-    const firstTimePct = deliveredCount
-      ? Math.round((firstTimeCount / deliveredCount) * 100)
-      : null;
-
-    const waitingMins = data.map(d => d.waitingMin).filter(x => x > 0);
-    const avgWaiting = waitingMins.length
-      ? waitingMins.reduce((a,b) => a+b, 0) / waitingMins.length
-      : null;
-
-    const inProgress = STATE.issues.filter(d => d.isInProgress && (!d.market || true)).length;
-    // Apply market filter to in-progress count too:
-    const fInProgress = STATE.filtered.filter(d => d.isInProgress).length;
-
-    $("kpiDelivered").textContent = deliveredCount.toLocaleString();
-    $("kpiAvgDesign").innerHTML = avgDesign != null
-      ? `${fmtHours(avgDesign)}<span class="unit">h</span>`
-      : "—";
-    $("kpiFirstTime").innerHTML = firstTimePct != null
-      ? `${firstTimePct}<span class="unit">%</span>`
-      : "—";
-    $("kpiWaiting").innerHTML = avgWaiting != null
-      ? fmtMin(avgWaiting)
-      : "—";
-    $("kpiInProgress").textContent = fInProgress.toLocaleString();
+  function renderKPIs(d) {
+    const k = d.kpis || {};
+    $("kpiDelivered").textContent = (k.tickets_delivered || 0).toLocaleString();
+    $("kpiAvgDesign").innerHTML = (k.avg_design_min != null)
+      ? `${fmtHours(k.avg_design_min)}<span class="unit">h</span>` : "—";
+    $("kpiFirstTime").innerHTML = (k.first_time_pct != null)
+      ? `${k.first_time_pct}<span class="unit">%</span>` : "—";
+    $("kpiWaiting").innerHTML = (k.avg_waiting_min != null) ? fmtMin(k.avg_waiting_min) : "—";
+    $("kpiInProgress").textContent = (k.in_progress || 0).toLocaleString();
   }
 
   function makeChart(canvasId, config) {
-    if (STATE.charts[canvasId]) {
-      STATE.charts[canvasId].destroy();
-    }
+    if (STATE.charts[canvasId]) STATE.charts[canvasId].destroy();
     const ctx = document.getElementById(canvasId).getContext("2d");
     STATE.charts[canvasId] = new Chart(ctx, config);
   }
 
-  function renderCharts() {
-    const data = STATE.filtered;
-    const delivered = data.filter(d => d.isDelivered);
-
-    /* --- chart 1: avg design time by market --- */
-    const byMarket = {};
-    delivered.forEach(d => {
-      if (!byMarket[d.market]) byMarket[d.market] = { sum: 0, n: 0, ft: 0 };
-      byMarket[d.market].sum += d.designMin;
-      byMarket[d.market].n += 1;
-      if (d.isFirstTime) byMarket[d.market].ft += 1;
-    });
-    const marketLabels = Object.keys(byMarket).sort((a,b) => byMarket[b].n - byMarket[a].n);
-    const marketAvgH = marketLabels.map(m => +(byMarket[m].sum / byMarket[m].n / 60).toFixed(1));
-    const marketFTpct = marketLabels.map(m => Math.round((byMarket[m].ft / byMarket[m].n) * 100));
-
+  function renderCharts(d) {
     Chart.defaults.font.family = "'Instrument Sans', sans-serif";
 
+    /* avg design time by market — horizontal bars on cream */
+    const ma = (d.market_avg || []).filter(m => m.market !== "—");
+    const maLabels = ma.map(m => m.market);
+    const maValuesH = ma.map(m => +(m.avg_design_min / 60).toFixed(1));
     makeChart("chartByMarket", {
       type: "bar",
-      data: {
-        labels: marketLabels,
-        datasets: [{
-          data: marketAvgH,
-          backgroundColor: COLOR.coral,
-          borderRadius: 6,
-          barThickness: 18,
-        }],
-      },
+      data: { labels: maLabels, datasets: [{ data: maValuesH, backgroundColor: COLOR.coral, borderRadius: 6, barThickness: 18 }] },
       options: {
-        indexAxis: "y",
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: {
-          callbacks: { label: ctx => `${ctx.parsed.x} h` }
-        }},
+        indexAxis: "y", responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.parsed.x} h business` } } },
         scales: {
-          x: {
-            grid: { color: "rgba(47,46,46,0.18)" },
-            ticks: { color: COLOR.grey5, callback: v => `${v}h` }
-          },
-          y: {
-            grid: { display: false },
-            ticks: { color: COLOR.grey5 }
-          }
-        }
-      }
+          x: { grid: { color: "rgba(47,46,46,0.18)" }, ticks: { color: COLOR.grey5, callback: v => `${v}h` } },
+          y: { grid: { display: false }, ticks: { color: COLOR.grey5 } },
+        },
+      },
     });
 
+    /* first-time delivery % by market */
+    const mft = (d.market_ft || []).filter(m => m.market !== "—");
     makeChart("chartFirstTime", {
       type: "bar",
       data: {
-        labels: marketLabels,
-        datasets: [{
-          data: marketFTpct,
-          backgroundColor: COLOR.coral,
-          borderRadius: 6,
-          barThickness: 18,
-        }],
+        labels: mft.map(m => m.market),
+        datasets: [{ data: mft.map(m => m.first_time_pct), backgroundColor: COLOR.coral, borderRadius: 6, barThickness: 18 }],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: {
-          callbacks: { label: ctx => `${ctx.parsed.y}% first time` }
-        }},
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.parsed.y}% first time` } } },
         scales: {
           x: { grid: { display: false }, ticks: { color: COLOR.grey5 } },
-          y: {
-            grid: { color: "rgba(47,46,46,0.18)" },
-            ticks: { color: COLOR.grey5, callback: v => `${v}%` },
-            min: 0, max: 100
-          }
-        }
-      }
+          y: { grid: { color: "rgba(47,46,46,0.18)" }, ticks: { color: COLOR.grey5, callback: v => `${v}%` }, min: 0, max: 100 },
+        },
+      },
     });
 
-    /* --- chart 3: weekly delivered volume --- */
-    const weeks = {};
-    delivered.forEach(d => {
-      const w = startOfWeek(new Date(d.deliveredAt));
-      const key = isoDay(w);
-      weeks[key] = (weeks[key] || 0) + 1;
-    });
-    const weekLabels = Object.keys(weeks).sort();
-    const weekValues = weekLabels.map(k => weeks[k]);
-
+    /* weekly delivered volume */
+    const w = d.weekly_volume || [];
     makeChart("chartWeekly", {
       type: "line",
       data: {
-        labels: weekLabels,
+        labels: w.map(x => x.week),
         datasets: [{
-          data: weekValues,
-          borderColor: COLOR.coral,
-          backgroundColor: "rgba(255,107,124,0.18)",
-          borderWidth: 2,
-          tension: 0.32,
-          fill: true,
-          pointBackgroundColor: COLOR.coral,
-          pointRadius: 3,
+          data: w.map(x => x.n),
+          borderColor: COLOR.coral, backgroundColor: "rgba(255,107,124,0.18)",
+          borderWidth: 2, tension: 0.32, fill: true, pointBackgroundColor: COLOR.coral, pointRadius: 3,
         }],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: {
-            grid: { color: "rgba(255,255,255,0.05)" },
-            ticks: { color: COLOR.grey3, maxTicksLimit: 12 }
-          },
-          y: {
-            grid: { color: "rgba(255,255,255,0.05)" },
-            ticks: { color: COLOR.grey3, precision: 0 }
-          }
-        }
-      }
+          x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, maxTicksLimit: 12 } },
+          y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0 } },
+        },
+      },
     });
 
-    /* --- chart 4: design vs customer time donut --- */
-    const totalDesign = delivered.reduce((a,b) => a + b.designMin, 0);
-    const totalWaiting = delivered.reduce((a,b) => a + b.waitingMin, 0);
+    /* design vs waiting donut */
+    const t = d.totals || { design_min: 0, waiting_min: 0 };
     makeChart("chartSplit", {
       type: "doughnut",
       data: {
         labels: ["Design time", "Waiting for customer"],
-        datasets: [{
-          data: [totalDesign, totalWaiting],
-          backgroundColor: [COLOR.coral, COLOR.black],
-          borderColor: COLOR.cream,
-          borderWidth: 2,
-        }],
+        datasets: [{ data: [t.design_min, t.waiting_min], backgroundColor: [COLOR.coral, COLOR.black], borderColor: COLOR.cream, borderWidth: 2 }],
       },
       options: {
-        responsive: true, maintainAspectRatio: false,
-        cutout: "62%",
+        responsive: true, maintainAspectRatio: false, cutout: "62%",
         plugins: {
-          legend: {
-            position: "bottom",
-            labels: { color: COLOR.white, padding: 16, boxWidth: 10 }
-          },
-          tooltip: {
-            callbacks: {
-              label: ctx => `${ctx.label}: ${fmtMin(ctx.parsed)}`
-            }
-          }
-        }
-      }
+          legend: { position: "bottom", labels: { color: COLOR.white, padding: 16, boxWidth: 10 } },
+          tooltip: { callbacks: { label: ctx => `${ctx.label}: ${fmtMin(ctx.parsed)}` } },
+        },
+      },
+    });
+  }
+
+  function filteredTable() {
+    const term = STATE.search.toLowerCase().trim();
+    const rows = (STATE.data && STATE.data.table) || [];
+    return rows.filter(r => {
+      if (!term) return true;
+      const blob = `${r.key} ${r.summary || ""} ${r.market || ""} ${r.deliveryType || ""} ${r.status || ""}`.toLowerCase();
+      return blob.includes(term);
     });
   }
 
   function renderTable() {
     const tbody = document.querySelector("#ticketsTable tbody");
-    const sorted = [...STATE.filtered].sort((a,b) => {
-      const k = STATE.sortKey;
-      const va = a[k], vb = b[k];
+    const rows = filteredTable();
+    const sorted = rows.slice().sort((a, b) => {
+      const k = STATE.sortKey, va = a[k], vb = b[k];
       if (va == null && vb == null) return 0;
       if (va == null) return 1;
       if (vb == null) return -1;
@@ -1114,23 +816,20 @@
       return String(va).localeCompare(String(vb)) * STATE.sortDir;
     });
 
-    tbody.innerHTML = sorted.slice(0, 800).map(it => {
-      return `
-        <tr class="row" data-key="${it.key}">
-          <td class="key-cell"><a href="${it.url}" target="_blank" rel="noopener">${it.key}</a></td>
-          <td class="summary-cell">${escapeHtml(it.summary || "")}</td>
-          <td><span class="pill">${escapeHtml(it.market || "—")}</span></td>
-          <td>${escapeHtml(it.deliveryType || "—")}</td>
-          <td>${it.deliveredAt ? new Date(it.deliveredAt).toLocaleDateString() : "—"}</td>
-          <td>${fmtMin(it.designMin)}</td>
-          <td>${fmtMin(it.waitingMin)}</td>
-          <td>${it.corrections}</td>
-          <td><span class="pill ${it.isInProgress ? "" : "grey"}">${escapeHtml(it.status || "—")}</span></td>
-        </tr>
-      `;
-    }).join("");
+    tbody.innerHTML = sorted.slice(0, 800).map(r => `
+      <tr class="row" data-key="${escapeHtml(r.key)}">
+        <td class="key-cell"><a href="https://seedtag.atlassian.net/browse/${escapeHtml(r.key)}" target="_blank" rel="noopener">${escapeHtml(r.key)}</a></td>
+        <td class="summary-cell">${escapeHtml(r.summary || "")}</td>
+        <td><span class="pill">${escapeHtml(r.market || "—")}</span></td>
+        <td>${escapeHtml(r.deliveryType || "—")}</td>
+        <td>${r.deliveredAt ? new Date(r.deliveredAt).toLocaleDateString() : "—"}</td>
+        <td>${fmtMin(r.designMin)}</td>
+        <td>${fmtMin(r.waitingMin)}</td>
+        <td>${r.corrections}</td>
+        <td><span class="pill ${r.isInProgress ? "" : "grey"}">${escapeHtml(r.status || "—")}</span></td>
+      </tr>
+    `).join("");
 
-    // Mark sorted column
     document.querySelectorAll("#ticketsTable thead th").forEach(th => {
       th.classList.toggle("sorted", th.dataset.key === STATE.sortKey);
       const ind = th.querySelector(".sort-ind");
@@ -1140,45 +839,39 @@
     $("tableSub").textContent = `${sorted.length.toLocaleString()} tickets · click a row for status history`;
   }
 
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
-
   function bindRowExpansion() {
     const tbody = document.querySelector("#ticketsTable tbody");
-    tbody.addEventListener("click", (e) => {
+    tbody.addEventListener("click", async (e) => {
       const tr = e.target.closest("tr.row");
       if (!tr) return;
-      if (e.target.closest("a")) return;     // do not toggle when clicking the key link
+      if (e.target.closest("a")) return;
       const key = tr.dataset.key;
       const next = tr.nextElementSibling;
-      if (next && next.classList.contains("detail")) {
-        next.remove();
-        return;
-      }
-      const issue = STATE.issues.find(i => i.key === key);
-      if (!issue) return;
+      if (next && next.classList.contains("detail")) { next.remove(); return; }
+
       const detail = document.createElement("tr");
       detail.className = "detail";
       const cell = document.createElement("td");
       cell.colSpan = 9;
-
-      if (!issue.timeline.length) {
-        cell.innerHTML = `<div class="timeline"><div style="color:var(--grey-3);font-size:12px;">No status transitions recorded.</div></div>`;
-      } else {
-        const rows = issue.timeline.map(t => `
-          <div class="timeline-row">
-            <span class="ts">${new Date(t.at).toLocaleString()}</span>
-            <span class="from">${escapeHtml(t.from || "—")} →</span>
-            <span class="to">${escapeHtml(t.to || "—")}</span>
-          </div>
-        `).join("");
-        cell.innerHTML = `<div class="timeline">${rows}</div>`;
-      }
+      cell.innerHTML = `<div class="timeline"><div style="color:var(--grey-3);font-size:12px;">Loading timeline…</div></div>`;
       detail.appendChild(cell);
       tr.after(detail);
+
+      try {
+        const { transitions } = await fetchIssue(key);
+        if (!transitions || !transitions.length) {
+          cell.innerHTML = `<div class="timeline"><div style="color:var(--grey-3);font-size:12px;">No status transitions recorded.</div></div>`;
+          return;
+        }
+        cell.innerHTML = `<div class="timeline">` + transitions.map(t => `
+          <div class="timeline-row">
+            <span class="ts">${new Date(t.at).toLocaleString()}</span>
+            <span class="from">${escapeHtml(t.from_status || "—")} →</span>
+            <span class="to">${escapeHtml(t.to_status || "—")}</span>
+          </div>`).join("") + `</div>`;
+      } catch (err) {
+        cell.innerHTML = `<div class="timeline"><div style="color:var(--coral);font-size:12px;">Could not load timeline: ${escapeHtml(err.message)}</div></div>`;
+      }
     });
   }
 
@@ -1195,12 +888,13 @@
   }
 
   function render() {
-    renderKPIs();
-    renderCharts();
+    if (!STATE.data) return;
+    renderKPIs(STATE.data);
+    renderCharts(STATE.data);
     renderTable();
   }
 
-  /* ===================== LOADING ===================== */
+  /* ===================== LOADING / ERRORS ===================== */
   function showLoader(msg, prog) {
     $("loaderMsg").textContent = msg || "Loading…";
     $("loaderProgress").textContent = prog || "";
@@ -1208,106 +902,102 @@
   }
   function hideLoader() { $("loader").classList.remove("show"); }
   function showError(html) {
-    const b = $("errorBanner");
-    b.innerHTML = html;
-    b.classList.add("show");
+    const b = $("errorBanner"); b.innerHTML = html; b.classList.add("show");
   }
   function hideError() { $("errorBanner").classList.remove("show"); }
 
-  /* ===================== BOOT ===================== */
-  async function boot(force = false) {
+  /* ===================== BOOT / RELOAD ===================== */
+  async function loadAndRender(force = false) {
     hideError();
-    showLoader("Loading data…", "");
+    const filters = getFilters();
+    STATE.filters = filters;
 
-    // Cache check
     if (!force) {
-      const cached = loadCache();
+      const cached = loadCache(filters);
       if (cached) {
-        STATE.issues = cached.issues;
-        const ageMin = Math.round((Date.now() - cached.ts) / 60000);
-        $("lastUpdated").textContent =
-          `Last updated ${new Date(cached.ts).toLocaleString()} · cached (${ageMin} min ago)`;
-        finalizeBoot();
+        STATE.data = cached.data;
+        afterLoad(cached.ts);
         return;
       }
     }
 
+    showLoader("Loading metrics…", "");
     try {
-      const raw = await fetchAllIssues((n, total) => {
-        showLoader("Loading data from Jira…", total ? `${n} / ${total}` : `${n} issues so far`);
-      });
-      showLoader("Parsing…", `${raw.length} issues`);
-      const parsed = raw.map(parseIssue);
-      STATE.issues = parsed;
-      saveCache(parsed);
-      $("lastUpdated").textContent = `Last updated ${new Date().toLocaleString()} · live fetch`;
-      finalizeBoot();
+      const data = await fetchDashboard(filters);
+      STATE.data = data;
+      saveCache(filters, data);
+      afterLoad(Date.now());
     } catch (err) {
       console.error(err);
       hideLoader();
       showError(`
-        <strong>Could not load data from Jira.</strong><br>
+        <strong>Could not load metrics.</strong><br>
         ${escapeHtml(err.message || String(err))}<br><br>
-        Common causes:
+        Likely causes:
         <ul style="margin:8px 0 0 18px;color:#D4D0CE;">
-          <li>The Cloudflare Worker proxy (<code>${escapeHtml(CONFIG.JIRA_BASE)}</code>) is down or its <code>JIRA_TOKEN</code> secret has been revoked or expired.</li>
-          <li>The Atlassian token has been rotated. Re-set the secret with <code>wrangler secret put JIRA_TOKEN</code> in the proxy project.</li>
-          <li>Network or rate-limit issue. Retry with the Refresh button.</li>
+          <li>The Cloudflare Worker is down.</li>
+          <li>The Atlassian token has been rotated. Re-set the secret on the Worker (<code>wrangler secret put JIRA_TOKEN</code>) and let the next sync run.</li>
         </ul>
       `);
     }
   }
 
-  function finalizeBoot() {
-    setupMarketFilter();
-    // Default date range = last 90 days
-    const today = new Date();
-    const ago = new Date(today); ago.setDate(today.getDate() - 90);
-    if (!$("filterFrom").value) $("filterFrom").value = isoDay(ago);
-    if (!$("filterTo").value)   $("filterTo").value   = isoDay(today);
-    applyFilters();
+  function afterLoad(ts) {
+    // Capture all markets we have ever seen so the filter dropdown is stable.
+    if (STATE.data && STATE.data.table) {
+      const seen = new Set(STATE.knownMarkets);
+      STATE.data.table.forEach(r => { if (r.market && r.market !== "—") seen.add(r.market); });
+      STATE.knownMarkets = Array.from(seen).sort();
+      if (!$("filterMarket").options.length) setupMarketFilter(STATE.knownMarkets);
+    }
+    const lastSync = STATE.data && STATE.data.last_sync_at;
+    const ageMin = lastSync ? Math.round((Date.now() - new Date(lastSync).getTime()) / 60000) : null;
+    $("lastUpdated").textContent =
+      `Last sync ${lastSync ? new Date(lastSync).toLocaleString() : "—"}` +
+      (ageMin != null ? ` · ${ageMin} min ago` : "") +
+      (ts ? ` · cached ${new Date(ts).toLocaleTimeString()}` : "");
+    render();
     hideLoader();
   }
 
   /* ===================== EVENT WIRING ===================== */
   function wireUp() {
-    $("btnRefresh").addEventListener("click", () => { clearCache(); boot(true); });
-    $("filterMarket").addEventListener("change", applyFilters);
-    $("filterFrom").addEventListener("change", applyFilters);
-    $("filterTo").addEventListener("change", applyFilters);
+    $("btnRefresh").addEventListener("click", () => loadAndRender(true));
+    $("filterMarket").addEventListener("change", () => loadAndRender(true));
+    $("filterFrom").addEventListener("change", () => loadAndRender(true));
+    $("filterTo").addEventListener("change", () => loadAndRender(true));
     $("tableSearch").addEventListener("input", (e) => {
       STATE.search = e.target.value;
-      applyFilters();
+      renderTable();
     });
     bindHeaderSort();
     bindRowExpansion();
   }
 
   /* ===================== LOGIN ===================== */
-  function checkLoggedIn() {
-    return sessionStorage.getItem("sds_authed") === "1";
+  function checkLoggedIn() { return sessionStorage.getItem("sds_authed") === "1"; }
+  function showApp() { $("login").style.display = "none"; $("app").hidden = false; }
+
+  async function bootstrap() {
+    // First-time UI: prefill last 90 days
+    const today = new Date();
+    const ago = new Date(today); ago.setDate(today.getDate() - 90);
+    if (!$("filterFrom").value) $("filterFrom").value = isoDay(ago);
+    if (!$("filterTo").value)   $("filterTo").value   = isoDay(today);
+    wireUp();
+    await loadAndRender(false);
   }
-  function showApp() {
-    $("login").style.display = "none";
-    $("app").hidden = false;
-  }
+
   document.addEventListener("DOMContentLoaded", () => {
-    const form = $("loginForm");
-    if (checkLoggedIn()) {
-      showApp();
-      wireUp();
-      boot(false);
-      return;
-    }
-    form.addEventListener("submit", (e) => {
+    if (checkLoggedIn()) { showApp(); bootstrap(); return; }
+    $("loginForm").addEventListener("submit", (e) => {
       e.preventDefault();
       const v = $("pwd").value;
       if (v === CONFIG.PASSWORD) {
         sessionStorage.setItem("sds_authed", "1");
         $("loginErr").textContent = "";
         showApp();
-        wireUp();
-        boot(false);
+        bootstrap();
       } else {
         $("loginErr").textContent = "Incorrect password.";
         $("pwd").value = "";
