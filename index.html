@@ -574,18 +574,22 @@
   /* ============================================================
      SDS SERVICE DASHBOARD — CONFIG
      ------------------------------------------------------------
-     SECURITY NOTE: this dashboard is deliberately a public,
-     client-side-only artifact. The Jira API token is embedded
-     (base64 via btoa) and is therefore NOT secret. The password
-     gate is cosmetic. Treat this token as compromised the moment
-     this page is reachable. Rotate immediately if abused.
+     The Jira API token is NOT in this file. It lives as a secret
+     inside the Cloudflare Worker that JIRA_BASE points to. The
+     Worker injects the Authorization header before forwarding to
+     seedtag.atlassian.net. The browser only sees the Worker URL.
+
+     The password gate below is cosmetic — anyone reading this
+     file can call the Worker URL directly. The Worker is locked
+     to known origins to limit abuse.
      ============================================================ */
 
   const CONFIG = {
     PASSWORD: "SDS2026",
-    JIRA_BASE: "https://seedtag.atlassian.net",
-    JIRA_EMAIL: "fernandopascual@seedtag.com",
-    JIRA_TOKEN: "ATATT3xFfGF01ukw1hbxaDzKWgq73hLE34E5647YQ8-P-pIvOi5kV0E2tEFS52lNUSgfNbSBVBIVCSz7762tzV55LRQ89VeLY3P7ZageLn0GiQrnZTwWoW4vNmRv_8JLCli8GdeouHwPG1qhgAHSQJIP3eT3TwX0BBiVOSHlpq_B60GMnTCziFM=E183F449",
+    // The dashboard talks to a Cloudflare Worker that holds the Jira
+    // credentials server-side and proxies to seedtag.atlassian.net.
+    // Never put a Jira token here — the Worker injects it.
+    JIRA_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
     PROJECT: "SDS",
     JQL: "project = SDS ORDER BY created DESC",
     PAGE_SIZE: 100,
@@ -636,9 +640,9 @@
     return true;
   };
 
-  function authHeader() {
-    return "Basic " + btoa(`${CONFIG.JIRA_EMAIL}:${CONFIG.JIRA_TOKEN}`);
-  }
+  // No-op: auth is now injected server-side by the Cloudflare Worker.
+  // We keep this signature so other call sites stay simple.
+  function authHeader() { return null; }
 
   /* ===================== CACHE ===================== */
   function loadCache() {
@@ -668,7 +672,6 @@
     const res = await fetch(CONFIG.JIRA_BASE + path, {
       headers: {
         "Accept": "application/json",
-        "Authorization": authHeader(),
       },
       mode: "cors",
     });
@@ -819,7 +822,7 @@
 
     return {
       key: rawIssue.key,
-      url: `${CONFIG.JIRA_BASE}/browse/${rawIssue.key}`,
+      url: `https://seedtag.atlassian.net/browse/${rawIssue.key}`,
       summary: f.summary || "",
       market: String(market || "—").toUpperCase(),
       deliveryType: deliveryType || "—",
@@ -1236,11 +1239,11 @@
       showError(`
         <strong>Could not load data from Jira.</strong><br>
         ${escapeHtml(err.message || String(err))}<br><br>
-        Most likely cause: <strong>CORS</strong>. Atlassian Cloud blocks direct browser calls
-        to the REST API from external origins. Options:
+        Common causes:
         <ul style="margin:8px 0 0 18px;color:#D4D0CE;">
-          <li>Run this dashboard through a CORS-friendly proxy (e.g. a Cloudflare Worker that forwards to <code>${CONFIG.JIRA_BASE}</code> with the Basic Auth header).</li>
-          <li>For local debugging only, use a CORS-disabling browser extension.</li>
+          <li>The Cloudflare Worker proxy (<code>${escapeHtml(CONFIG.JIRA_BASE)}</code>) is down or its <code>JIRA_TOKEN</code> secret has been revoked or expired.</li>
+          <li>The Atlassian token has been rotated. Re-set the secret with <code>wrangler secret put JIRA_TOKEN</code> in the proxy project.</li>
+          <li>Network or rate-limit issue. Retry with the Refresh button.</li>
         </ul>
       `);
     }

@@ -4,7 +4,7 @@ Real-time service transparency dashboard for the SDS Design team. Built for the
 Seedtag CSM team to monitor delivery health across EMEA markets before
 escalating client issues.
 
-Live: `https://fernandopascual.github.io/seedtag-design-dashboard`
+Live: `https://fpascual83.github.io/seedtag-design-dashboard`
 
 ## What it shows
 
