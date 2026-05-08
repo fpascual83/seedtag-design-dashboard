@@ -610,6 +610,13 @@
     grey5:  "#2F2E2E",
   };
 
+  // Custom field IDs in the SDS Jira project (verified via /rest/api/3/field).
+  const FIELDS = {
+    OPERATOR_ENTITY: "customfield_14324",
+    DELIVERY_TYPE:   "customfield_15042",
+    NUM_FORMATS:     "customfield_15827",
+  };
+
   /* ===================== UTIL ===================== */
   const $ = (id) => document.getElementById(id);
   const fmtMin = (m) => {
@@ -688,10 +695,8 @@
     let token = null;
     let page = 0;
     const fields = [
-      "summary", "status", "created", "resolutiondate",
-      "issuetype",
-      // request all custom fields under their friendly names via *all
-      "*all"
+      "summary", "status", "created", "resolutiondate", "issuetype",
+      FIELDS.OPERATOR_ENTITY, FIELDS.DELIVERY_TYPE, FIELDS.NUM_FORMATS,
     ].join(",");
 
     while (page < CONFIG.MAX_PAGES) {
@@ -735,16 +740,20 @@
     return null;
   }
 
+  function readOption(v) {
+    if (v == null) return null;
+    if (typeof v === "string" || typeof v === "number") return v;
+    if (Array.isArray(v)) return v.map(x => x?.value || x?.name || x).join(", ");
+    if (typeof v === "object") return v.value || v.name || null;
+    return null;
+  }
+
   function parseIssue(rawIssue) {
     const f = rawIssue.fields || {};
-    const names = rawIssue.names || {};
 
-    const market = findCustomFieldValue(rawIssue, names,
-      ["Operator Entity", "Operator Entity ", "Market"]) || "—";
-    const deliveryType = findCustomFieldValue(rawIssue, names,
-      ["Delivery Type"]) || "—";
-    const numFormats = findCustomFieldValue(rawIssue, names,
-      ["Number of formats"]);
+    const market = readOption(f[FIELDS.OPERATOR_ENTITY]) || "—";
+    const deliveryType = readOption(f[FIELDS.DELIVERY_TYPE]) || "—";
+    const numFormats = f[FIELDS.NUM_FORMATS] ?? null;
 
     // Build full timeline from changelog: [{ at, from, to }]
     const timeline = [];
