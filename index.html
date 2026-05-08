@@ -463,6 +463,14 @@
             <label>To</label>
             <input id="filterTo" type="date" />
           </div>
+          <div class="filter">
+            <label>Kind</label>
+            <select id="filterKind">
+              <option value="all">All</option>
+              <option value="camp">Campaigns</option>
+              <option value="prop">Proposals</option>
+            </select>
+          </div>
           <button class="btn-refresh" id="btnRefresh">Refresh</button>
         </div>
       </div>
@@ -600,7 +608,7 @@
   const CONFIG = {
     PASSWORD: "SDS2026",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    CACHE_KEY: "sds-dashboard-v5",
+    CACHE_KEY: "sds-dashboard-v6",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
   };
@@ -669,11 +677,12 @@
     }
     return res.json();
   }
-  async function fetchDashboard({ market, from, to }) {
+  async function fetchDashboard({ market, from, to, kind }) {
     const params = new URLSearchParams();
     if (market && market.length) params.set("market", market.join(","));
     if (from) params.set("from", from);
     if (to)   params.set("to",   to);
+    if (kind && kind !== "all") params.set("kind", kind);
     return apiGet("/api/dashboard?" + params.toString());
   }
   async function fetchIssue(key) {
@@ -697,7 +706,8 @@
     const toVal = $("filterTo").value;
     const sel = $("filterMarket");
     const markets = Array.from(sel.selectedOptions).map(o => o.value);
-    return { market: markets, from: fromVal || "", to: toVal || "" };
+    const kind = $("filterKind") ? $("filterKind").value : "all";
+    return { market: markets, from: fromVal || "", to: toVal || "", kind };
   }
 
   function setupMarketFilter(markets) {
@@ -982,6 +992,7 @@
     $("filterMarket").addEventListener("change", () => loadAndRender(true));
     $("filterFrom").addEventListener("change", () => loadAndRender(true));
     $("filterTo").addEventListener("change", () => loadAndRender(true));
+    $("filterKind").addEventListener("change", () => loadAndRender(true));
     $("tableSearch").addEventListener("input", (e) => {
       STATE.search = e.target.value;
       renderTable();
