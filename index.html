@@ -471,6 +471,15 @@
               <option value="prop">Proposals</option>
             </select>
           </div>
+          <div class="filter">
+            <label>Specs</label>
+            <select id="filterSpecs">
+              <option value="all">All</option>
+              <option value="sent">Sent</option>
+              <option value="not_sent">Not sent</option>
+              <option value="not_needed">Not needed</option>
+            </select>
+          </div>
           <button class="btn-refresh" id="btnRefresh">Refresh</button>
         </div>
       </div>
@@ -558,7 +567,8 @@
                 <th data-key="key">Key<span class="sort-ind">↑</span></th>
                 <th data-key="summary">Summary<span class="sort-ind">↑</span></th>
                 <th data-key="market">Market<span class="sort-ind">↑</span></th>
-                <th data-key="deliveryType">Delivery type<span class="sort-ind">↑</span></th>
+                <th data-key="kind">Kind<span class="sort-ind">↑</span></th>
+                <th data-key="seedtagSpecs">Specs<span class="sort-ind">↑</span></th>
                 <th data-key="deliveredAt">Delivered<span class="sort-ind">↑</span></th>
                 <th data-key="designFirstMin">1st delivery (SLA)<span class="sort-ind">↑</span></th>
                 <th data-key="designLastMin">Total effort<span class="sort-ind">↑</span></th>
@@ -608,7 +618,7 @@
   const CONFIG = {
     PASSWORD: "SDS2026",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    CACHE_KEY: "sds-dashboard-v6",
+    CACHE_KEY: "sds-dashboard-v7",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
   };
@@ -677,12 +687,13 @@
     }
     return res.json();
   }
-  async function fetchDashboard({ market, from, to, kind }) {
+  async function fetchDashboard({ market, from, to, kind, specs }) {
     const params = new URLSearchParams();
     if (market && market.length) params.set("market", market.join(","));
     if (from) params.set("from", from);
     if (to)   params.set("to",   to);
     if (kind && kind !== "all") params.set("kind", kind);
+    if (specs && specs !== "all") params.set("specs", specs);
     return apiGet("/api/dashboard?" + params.toString());
   }
   async function fetchIssue(key) {
@@ -707,7 +718,8 @@
     const sel = $("filterMarket");
     const markets = Array.from(sel.selectedOptions).map(o => o.value);
     const kind = $("filterKind") ? $("filterKind").value : "all";
-    return { market: markets, from: fromVal || "", to: toVal || "", kind };
+    const specs = $("filterSpecs") ? $("filterSpecs").value : "all";
+    return { market: markets, from: fromVal || "", to: toVal || "", kind, specs };
   }
 
   function setupMarketFilter(markets) {
@@ -846,7 +858,8 @@
         <td class="key-cell"><a href="https://seedtag.atlassian.net/browse/${escapeHtml(r.key)}" target="_blank" rel="noopener">${escapeHtml(r.key)}</a></td>
         <td class="summary-cell">${escapeHtml(r.summary || "")}</td>
         <td><span class="pill">${escapeHtml(r.market || "—")}</span></td>
-        <td>${escapeHtml(r.deliveryType || "—")}</td>
+        <td>${r.kind && r.kind !== "—" ? `<span class="pill grey">${escapeHtml(r.kind)}</span>` : "—"}</td>
+        <td>${escapeHtml(r.seedtagSpecs || "—")}</td>
         <td>${r.deliveredAt ? new Date(r.deliveredAt).toLocaleDateString() : "—"}</td>
         <td>${fmtMin(r.designFirstMin ?? r.designMin)}</td>
         <td>${fmtMin(r.designLastMin ?? r.designMin)}</td>
@@ -878,7 +891,7 @@
       const detail = document.createElement("tr");
       detail.className = "detail";
       const cell = document.createElement("td");
-      cell.colSpan = 10;
+      cell.colSpan = 11;
       cell.innerHTML = `<div class="timeline"><div style="color:var(--grey-3);font-size:12px;">Loading timeline…</div></div>`;
       detail.appendChild(cell);
       tr.after(detail);
@@ -993,6 +1006,7 @@
     $("filterFrom").addEventListener("change", () => loadAndRender(true));
     $("filterTo").addEventListener("change", () => loadAndRender(true));
     $("filterKind").addEventListener("change", () => loadAndRender(true));
+    $("filterSpecs").addEventListener("change", () => loadAndRender(true));
     $("tableSearch").addEventListener("input", (e) => {
       STATE.search = e.target.value;
       renderTable();
