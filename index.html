@@ -591,7 +591,7 @@
   const CONFIG = {
     PASSWORD: "SDS2026",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    CACHE_KEY: "sds-dashboard-v3",
+    CACHE_KEY: "sds-dashboard-v4",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
   };
@@ -607,13 +607,17 @@
 
   /* ===================== UTIL ===================== */
   const $ = (id) => document.getElementById(id);
+  // Format a count of *business minutes*. We never collapse into "days"
+  // because business minutes are not calendar days — that mapping confuses
+  // people. We use hours for everything ≥ 60min, with optional "Bd" (business
+  // day at 8.5h) hint for very large numbers.
   const fmtMin = (m) => {
     if (m == null || isNaN(m)) return "—";
     if (m < 60) return Math.round(m) + "m";
     const h = m / 60;
-    if (h < 24) return h.toFixed(1) + "h";
-    const d = h / 24;
-    return d.toFixed(1) + "d";
+    if (h < 100) return h.toFixed(1) + "h";
+    const bd = h / 8.5; // business days @ 8.5h
+    return Math.round(h) + "h (" + bd.toFixed(1) + " Bd)";
   };
   const fmtHours = (m) => {
     if (m == null || isNaN(m)) return "—";
