@@ -173,6 +173,105 @@
       min-width: 140px;
     }
     .filter select:focus, .filter input:focus { border-color: var(--coral); }
+
+    /* Dropdown checkbox UX */
+    .dropdown { position: relative; }
+    .dropdown summary {
+      list-style: none; cursor: pointer;
+      background: var(--card); color: var(--white);
+      border: 1px solid var(--grey-5); padding: 9px 28px 9px 12px;
+      border-radius: 8px; font-size: 13px; min-width: 160px;
+      max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      position: relative;
+    }
+    .dropdown summary::-webkit-details-marker { display: none; }
+    .dropdown summary::after {
+      content: "▾"; position: absolute; right: 10px; top: 50%;
+      transform: translateY(-50%); color: var(--grey-3); font-size: 10px;
+    }
+    .dropdown[open] summary { border-color: var(--coral); }
+    .dropdown-panel {
+      position: absolute; top: 100%; left: 0; margin-top: 4px;
+      background: var(--card); border: 1px solid var(--grey-5);
+      border-radius: 8px; padding: 8px; min-width: 220px; z-index: 10;
+      max-height: 280px; overflow-y: auto;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    }
+    .dropdown-panel label {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px; border-radius: 6px; cursor: pointer;
+      color: var(--white); font-size: 13px;
+      text-transform: none; letter-spacing: 0;
+    }
+    .dropdown-panel label:hover { background: rgba(255,107,124,0.08); }
+    .dropdown-panel input[type=checkbox] {
+      appearance: none; width: 14px; height: 14px;
+      border: 1px solid var(--grey-3); border-radius: 3px;
+      background: var(--black); cursor: pointer; flex-shrink: 0;
+    }
+    .dropdown-panel input[type=checkbox]:checked {
+      background: var(--coral); border-color: var(--coral);
+    }
+    .dropdown-panel input[type=checkbox]:checked::after {
+      content: "✓"; color: var(--white); font-size: 10px;
+      display: flex; align-items: center; justify-content: center; height: 100%;
+    }
+    .dropdown-panel .panel-actions {
+      display: flex; gap: 4px; padding: 4px 4px 8px;
+      border-bottom: 1px solid var(--grey-5); margin-bottom: 4px;
+    }
+    .dropdown-panel .panel-actions button {
+      background: transparent; color: var(--grey-3); border: none;
+      font-size: 11px; cursor: pointer; padding: 2px 6px;
+      text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    .dropdown-panel .panel-actions button:hover { color: var(--coral); }
+
+    /* Chart toggle pills */
+    .chart-toggle {
+      display: inline-flex; gap: 4px; margin-left: 12px;
+      vertical-align: middle;
+    }
+    .chart-toggle button {
+      background: transparent; color: var(--grey-3);
+      border: 1px solid var(--grey-5); border-radius: 6px;
+      padding: 3px 10px; font-size: 10px; cursor: pointer;
+      text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    .chart-toggle button.active {
+      color: var(--coral); border-color: var(--coral);
+    }
+
+    /* Admin badge + edit switch */
+    .admin-badge {
+      display: inline-block; margin-left: 12px;
+      background: var(--coral); color: var(--white);
+      font-size: 10px; letter-spacing: 0.2em; padding: 3px 10px;
+      border-radius: 4px; text-transform: uppercase;
+      vertical-align: middle;
+    }
+    tr.row td.edit-toggle {
+      text-align: center; white-space: nowrap;
+    }
+    tr.row td.edit-toggle .switch {
+      display: inline-flex; gap: 0; border: 1px solid var(--grey-5);
+      border-radius: 14px; overflow: hidden;
+    }
+    tr.row td.edit-toggle .switch button {
+      background: transparent; color: var(--grey-3);
+      border: none; padding: 3px 9px; font-size: 10px;
+      cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    tr.row td.edit-toggle .switch button.on {
+      background: var(--coral); color: var(--white);
+    }
+    tbody td.editable { cursor: text; }
+    tbody td.editable.dirty { background: rgba(255,107,124,0.08); }
+    tbody td.editable input {
+      width: 100%; background: var(--black); color: var(--white);
+      border: 1px solid var(--coral); border-radius: 4px;
+      padding: 4px 6px; font-size: 13px; font-family: inherit; outline: none;
+    }
     .btn-refresh {
       background: var(--coral); color: var(--white); border: 0;
       padding: 11px 18px;
@@ -452,8 +551,12 @@
 
         <div class="filters">
           <div class="filter">
-            <label>Market</label>
-            <select id="filterMarket" multiple size="1"></select>
+            <label>Operator entity</label>
+            <details class="dropdown" id="marketDropdown">
+              <summary id="marketSummary">All</summary>
+              <div class="dropdown-panel" id="marketPanel"></div>
+            </details>
+            <select id="filterMarket" multiple style="display:none"></select>
           </div>
           <div class="filter">
             <label>From</label>
@@ -526,27 +629,33 @@
       </div>
 
       <!-- Charts -->
-      <div class="section-marker">B Y &nbsp; M A R K E T &nbsp; & &nbsp; T R E N D</div>
+      <div class="section-marker">V O L U M E S &nbsp; · &nbsp; I G N O R E S &nbsp; D A T E / K I N D / S P E C S &nbsp; F I L T E R S</div>
       <div class="charts-grid">
-        <div class="chart-card">
-          <h3>Avg time to 1st delivery by market</h3>
-          <div class="chart-sub">SLA · business hours · lower is better</div>
-          <div class="chart-wrap"><canvas id="chartByMarket"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <h3>First-time delivery by market</h3>
-          <div class="chart-sub">% delivered with zero corrections</div>
-          <div class="chart-wrap"><canvas id="chartFirstTime"></canvas></div>
+        <div class="chart-card dark">
+          <h3>Tickets created by weekday</h3>
+          <div class="chart-sub">stacked by Specs status · Mon–Fri</div>
+          <div class="chart-wrap"><canvas id="chartWeekday"></canvas></div>
         </div>
         <div class="chart-card dark">
-          <h3>Weekly delivered volume</h3>
-          <div class="chart-sub">tickets reaching done per week</div>
-          <div class="chart-wrap"><canvas id="chartWeekly"></canvas></div>
+          <h3>Tickets created by month</h3>
+          <div class="chart-sub">stacked by Specs status</div>
+          <div class="chart-wrap"><canvas id="chartMonthly"></canvas></div>
         </div>
         <div class="chart-card dark">
-          <h3>Design vs customer time</h3>
-          <div class="chart-sub">share of total cycle time</div>
-          <div class="chart-wrap donut"><canvas id="chartSplit"></canvas></div>
+          <h3>Specs distribution</h3>
+          <div class="chart-sub">% of tickets · Sent / Not sent / Not needed</div>
+          <div class="chart-wrap donut"><canvas id="chartSpecs"></canvas></div>
+        </div>
+        <div class="chart-card dark">
+          <h3>By Sales Rep
+            <span class="chart-toggle" id="repToggle">
+              <button data-mode="total" class="active">Total</button>
+              <button data-mode="specs">Specs</button>
+              <button data-mode="kind">Kind</button>
+            </span>
+          </h3>
+          <div class="chart-sub">top 15 reps · respects operator entity filter</div>
+          <div class="chart-wrap"><canvas id="chartByRep"></canvas></div>
         </div>
       </div>
 
@@ -575,6 +684,7 @@
                 <th data-key="waitingMin">Customer time<span class="sort-ind">↑</span></th>
                 <th data-key="corrections">Corrections<span class="sort-ind">↑</span></th>
                 <th data-key="status">Status<span class="sort-ind">↑</span></th>
+                <th id="adminColHeader" style="display:none">Edits</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -618,10 +728,12 @@
   const CONFIG = {
     PASSWORD: "SDS2026",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    CACHE_KEY: "sds-dashboard-v7",
+    CACHE_KEY: "sds-dashboard-v8",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
+    MIN_DATE: "2026-04-01",
   };
+  const IS_ADMIN = /\/admin\/?$/i.test(window.location.pathname) || window.location.search.includes("admin=1");
 
   const COLOR = {
     coral:  "#FF6B7C",
@@ -702,13 +814,16 @@
 
   /* ===================== STATE ===================== */
   const STATE = {
-    data: null,            // last API payload
-    filters: { market: [], from: "", to: "" },
+    data: null,
+    filters: { market: [], from: "", to: "", kind: "all", specs: "all" },
     sortKey: "deliveredAt",
     sortDir: -1,
     search: "",
     charts: {},
-    knownMarkets: [],      // populated from first payload
+    knownMarkets: [],
+    repMode: "total",
+    edits: {},
+    showEdited: {},        // key → bool
   };
 
   /* ===================== FILTERS ===================== */
@@ -724,13 +839,46 @@
 
   function setupMarketFilter(markets) {
     const sel = $("filterMarket");
-    if (!markets.length) return;
+    const panel = $("marketPanel");
+    if (!markets.length || !panel) return;
     const list = [
       ...CONFIG.EMEA_MARKETS.filter(m => markets.includes(m)),
       ...markets.filter(m => !CONFIG.EMEA_MARKETS.includes(m)).sort(),
     ];
     sel.innerHTML = list.map(m => `<option value="${m}">${m}</option>`).join("");
-    sel.size = Math.min(7, Math.max(3, list.length));
+    if (panel.dataset.built === "1") return;
+    panel.dataset.built = "1";
+    panel.innerHTML = `
+      <div class="panel-actions">
+        <button type="button" data-act="all">Select all</button>
+        <button type="button" data-act="none">Clear</button>
+        <button type="button" data-act="emea">EMEA only</button>
+      </div>
+      ${list.map(m => `<label><input type="checkbox" value="${m}"> ${m}</label>`).join("")}`;
+    const cbs = () => [...panel.querySelectorAll('input[type=checkbox]')];
+    function syncFromPanel() {
+      const picked = cbs().filter(c => c.checked).map(c => c.value);
+      [...sel.options].forEach(o => o.selected = picked.includes(o.value));
+      $("marketSummary").textContent = picked.length === 0 ? "All" :
+        picked.length === 1 ? picked[0] :
+        picked.length <= 3 ? picked.join(", ") :
+        `${picked.length} selected`;
+      loadAndRender(true);
+    }
+    panel.addEventListener("change", e => {
+      if (e.target.tagName === "INPUT") syncFromPanel();
+    });
+    panel.querySelectorAll(".panel-actions button").forEach(b => {
+      b.addEventListener("click", () => {
+        const a = b.dataset.act;
+        cbs().forEach(c => {
+          if (a === "all") c.checked = true;
+          else if (a === "none") c.checked = false;
+          else if (a === "emea") c.checked = CONFIG.EMEA_MARKETS.includes(c.value);
+        });
+        syncFromPanel();
+      });
+    });
   }
 
   /* ===================== RENDER ===================== */
@@ -753,79 +901,127 @@
     STATE.charts[canvasId] = new Chart(ctx, config);
   }
 
+  // Specs color palette
+  const SPECS_COLORS = {
+    sent:       "#FF6B7C",    // Coral
+    not_sent:   "#8D8A89",    // Grey-3
+    not_needed: "#FFFFFF",    // White
+    unknown:    "#2F2E2E",    // Grey-5
+  };
+  const SPECS_LABELS = { sent: "Sent", not_sent: "Not sent", not_needed: "Not needed", unknown: "Unknown" };
+
+  function stackedDataset(rows, valueKey) {
+    return ["sent","not_sent","not_needed","unknown"].map(k => ({
+      label: SPECS_LABELS[k],
+      data: rows.map(r => r[k] || 0),
+      backgroundColor: SPECS_COLORS[k],
+      stack: "specs",
+      borderWidth: 0,
+    }));
+  }
+
   function renderCharts(d) {
     Chart.defaults.font.family = "'Instrument Sans', sans-serif";
+    const s = d.scoped || {};
 
-    /* avg time to 1st delivery (SLA) by market — horizontal bars on cream */
-    const ma = (d.market_avg || []).filter(m => m.market !== "—");
-    const maLabels = ma.map(m => m.market);
-    const maValuesH = ma.map(m => +((m.avg_design_first_min ?? m.avg_design_min) / 60).toFixed(1));
-    makeChart("chartByMarket", {
+    /* 1. Tickets created by weekday — stacked by specs */
+    const wd = s.weekday_created || [];
+    makeChart("chartWeekday", {
       type: "bar",
-      data: { labels: maLabels, datasets: [{ data: maValuesH, backgroundColor: COLOR.coral, borderRadius: 6, barThickness: 18 }] },
-      options: {
-        indexAxis: "y", responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.parsed.x} h business` } } },
-        scales: {
-          x: { grid: { color: "rgba(47,46,46,0.18)" }, ticks: { color: COLOR.grey5, callback: v => `${v}h` } },
-          y: { grid: { display: false }, ticks: { color: COLOR.grey5 } },
-        },
-      },
-    });
-
-    /* first-time delivery % by market */
-    const mft = (d.market_ft || []).filter(m => m.market !== "—");
-    makeChart("chartFirstTime", {
-      type: "bar",
-      data: {
-        labels: mft.map(m => m.market),
-        datasets: [{ data: mft.map(m => m.first_time_pct), backgroundColor: COLOR.coral, borderRadius: 6, barThickness: 18 }],
-      },
+      data: { labels: wd.map(x => x.day), datasets: stackedDataset(wd) },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.parsed.y}% first time` } } },
+        plugins: {
+          legend: { position: "bottom", labels: { color: COLOR.white, padding: 12, boxWidth: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}` } },
+        },
         scales: {
-          x: { grid: { display: false }, ticks: { color: COLOR.grey5 } },
-          y: { grid: { color: "rgba(47,46,46,0.18)" }, ticks: { color: COLOR.grey5, callback: v => `${v}%` }, min: 0, max: 100 },
+          x: { stacked: true, grid: { display: false }, ticks: { color: COLOR.grey3 } },
+          y: { stacked: true, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0 } },
         },
       },
     });
 
-    /* weekly delivered volume */
-    const w = d.weekly_volume || [];
-    makeChart("chartWeekly", {
-      type: "line",
-      data: {
-        labels: w.map(x => x.week),
-        datasets: [{
-          data: w.map(x => x.n),
-          borderColor: COLOR.coral, backgroundColor: "rgba(255,107,124,0.18)",
-          borderWidth: 2, tension: 0.32, fill: true, pointBackgroundColor: COLOR.coral, pointRadius: 3,
-        }],
-      },
+    /* 2. Tickets created by month — stacked by specs */
+    const mo = s.monthly_created || [];
+    makeChart("chartMonthly", {
+      type: "bar",
+      data: { labels: mo.map(x => x.month), datasets: stackedDataset(mo) },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: {
+          legend: { position: "bottom", labels: { color: COLOR.white, padding: 12, boxWidth: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}` } },
+        },
         scales: {
-          x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, maxTicksLimit: 12 } },
-          y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0 } },
+          x: { stacked: true, grid: { display: false }, ticks: { color: COLOR.grey3 } },
+          y: { stacked: true, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0 } },
         },
       },
     });
 
-    /* design vs waiting donut */
-    const t = d.totals || { design_min: 0, waiting_min: 0 };
-    makeChart("chartSplit", {
+    /* 3. Specs distribution — donut */
+    const sd = s.specs_distribution || {};
+    const keys = ["sent", "not_sent", "not_needed", "unknown"];
+    makeChart("chartSpecs", {
       type: "doughnut",
       data: {
-        labels: ["Design time", "Waiting for customer"],
-        datasets: [{ data: [t.design_min, t.waiting_min], backgroundColor: [COLOR.coral, COLOR.black], borderColor: COLOR.cream, borderWidth: 2 }],
+        labels: keys.map(k => SPECS_LABELS[k]),
+        datasets: [{
+          data: keys.map(k => sd[k] || 0),
+          backgroundColor: keys.map(k => SPECS_COLORS[k]),
+          borderColor: "#0d0d0d", borderWidth: 2,
+        }],
       },
       options: {
         responsive: true, maintainAspectRatio: false, cutout: "62%",
         plugins: {
-          legend: { position: "bottom", labels: { color: COLOR.white, padding: 16, boxWidth: 10 } },
-          tooltip: { callbacks: { label: ctx => `${ctx.label}: ${fmtMin(ctx.parsed)}` } },
+          legend: { position: "bottom", labels: { color: COLOR.white, padding: 14, boxWidth: 10, font: { size: 11 } } },
+          tooltip: { callbacks: {
+            label: ctx => {
+              const total = ctx.dataset.data.reduce((a,b) => a+b, 0);
+              const pct = total ? Math.round(ctx.parsed / total * 100) : 0;
+              return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+            },
+          }},
+        },
+      },
+    });
+
+    /* 4. By Sales Rep — toggle Total / Specs / Kind */
+    renderRepChart(s.by_sales_rep || [], STATE.repMode || "total");
+  }
+
+  function renderRepChart(reps, mode) {
+    const top = reps.slice(0, 15);
+    const labels = top.map(r => r.rep);
+    let datasets;
+    if (mode === "specs") {
+      datasets = ["sent","not_sent","not_needed","unknown"].map(k => ({
+        label: SPECS_LABELS[k],
+        data: top.map(r => (r.by_specs || {})[k] || 0),
+        backgroundColor: SPECS_COLORS[k], stack: "x", borderWidth: 0,
+      }));
+    } else if (mode === "kind") {
+      datasets = [
+        { label: "Campaigns", data: top.map(r => (r.by_kind || {}).camp || 0), backgroundColor: COLOR.coral, stack: "x", borderWidth: 0 },
+        { label: "Proposals", data: top.map(r => (r.by_kind || {}).prop || 0), backgroundColor: "#FFFFFF", stack: "x", borderWidth: 0 },
+        { label: "Other",     data: top.map(r => (r.by_kind || {}).other || 0), backgroundColor: COLOR.grey3, stack: "x", borderWidth: 0 },
+      ];
+    } else {
+      datasets = [{ label: "Tickets", data: top.map(r => r.total), backgroundColor: COLOR.coral, borderRadius: 4 }];
+    }
+    makeChart("chartByRep", {
+      type: "bar",
+      data: { labels, datasets },
+      options: {
+        indexAxis: "y", responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: mode !== "total", position: "bottom", labels: { color: COLOR.white, padding: 12, boxWidth: 10, font: { size: 11 } } },
+        },
+        scales: {
+          x: { stacked: mode !== "total", grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0 } },
+          y: { stacked: mode !== "total", grid: { display: false }, ticks: { color: COLOR.grey3, font: { size: 11 } } },
         },
       },
     });
@@ -843,7 +1039,7 @@
 
   function renderTable() {
     const tbody = document.querySelector("#ticketsTable tbody");
-    const rows = filteredTable();
+    const rows = filteredTable().map(applyOverride);
     const sorted = rows.slice().sort((a, b) => {
       const k = STATE.sortKey, va = a[k], vb = b[k];
       if (va == null && vb == null) return 0;
@@ -853,21 +1049,32 @@
       return String(va).localeCompare(String(vb)) * STATE.sortDir;
     });
 
-    tbody.innerHTML = sorted.slice(0, 800).map(r => `
-      <tr class="row" data-key="${escapeHtml(r.key)}">
-        <td class="key-cell"><a href="https://seedtag.atlassian.net/browse/${escapeHtml(r.key)}" target="_blank" rel="noopener">${escapeHtml(r.key)}</a></td>
-        <td class="summary-cell">${escapeHtml(r.summary || "")}</td>
-        <td><span class="pill">${escapeHtml(r.market || "—")}</span></td>
-        <td>${r.kind && r.kind !== "—" ? `<span class="pill grey">${escapeHtml(r.kind)}</span>` : "—"}</td>
-        <td>${escapeHtml(r.seedtagSpecs || "—")}</td>
-        <td>${r.deliveredAt ? new Date(r.deliveredAt).toLocaleDateString() : "—"}</td>
-        <td>${fmtMin(r.designFirstMin ?? r.designMin)}</td>
-        <td>${fmtMin(r.designLastMin ?? r.designMin)}</td>
-        <td>${fmtMin(r.waitingMin)}</td>
-        <td>${r.corrections}</td>
-        <td><span class="pill ${r.isInProgress ? "" : "grey"}">${escapeHtml(r.status || "—")}</span></td>
-      </tr>
-    `).join("");
+    tbody.innerHTML = sorted.slice(0, 800).map(r => {
+      const isEd = !!STATE.showEdited[r.key];
+      const hasEd = !!STATE.edits[r.key];
+      const ed = (cls, key, val) => IS_ADMIN && isEd
+        ? `<td class="${cls} editable" data-field="${key}">${val}</td>`
+        : `<td class="${cls}">${val}</td>`;
+      const adminCol = IS_ADMIN ? `<td class="edit-toggle"><div class="switch" data-key="${escapeHtml(r.key)}">
+          <button class="${!isEd ? "on" : ""}" data-mode="original">Original</button>
+          <button class="${isEd ? "on" : ""} ${hasEd ? "" : "muted"}" data-mode="edited">Edited</button>
+        </div></td>` : "";
+      return `
+        <tr class="row" data-key="${escapeHtml(r.key)}">
+          <td class="key-cell"><a href="https://seedtag.atlassian.net/browse/${escapeHtml(r.key)}" target="_blank" rel="noopener">${escapeHtml(r.key)}</a></td>
+          ${ed("summary-cell", "summary", escapeHtml(r.summary || ""))}
+          ${ed("", "market", `<span class="pill">${escapeHtml(r.market || "—")}</span>`)}
+          <td>${r.kind && r.kind !== "—" ? `<span class="pill grey">${escapeHtml(r.kind)}</span>` : "—"}</td>
+          ${ed("", "seedtag_specs", escapeHtml(r.seedtagSpecs || "—"))}
+          ${ed("", "delivered_at", r.deliveredAt ? new Date(r.deliveredAt).toLocaleDateString() : "—")}
+          ${ed("", "bm_design_first", fmtMin(r.designFirstMin ?? r.designMin))}
+          ${ed("", "bm_design_last", fmtMin(r.designLastMin ?? r.designMin))}
+          ${ed("", "bm_waiting_customer", fmtMin(r.waitingMin))}
+          ${ed("", "corrections", r.corrections)}
+          ${ed("", "status", `<span class="pill ${r.isInProgress ? "" : "grey"}">${escapeHtml(r.status || "—")}</span>`)}
+          ${adminCol}
+        </tr>`;
+    }).join("");
 
     document.querySelectorAll("#ticketsTable thead th").forEach(th => {
       th.classList.toggle("sorted", th.dataset.key === STATE.sortKey);
@@ -876,6 +1083,73 @@
     });
 
     $("tableSub").textContent = `${sorted.length.toLocaleString()} tickets · click a row for status history`;
+  }
+
+  function parseMinFromInput(v) {
+    // Accept "44.3h", "12m", "1.8d", or plain minutes.
+    if (v == null) return null;
+    const s = String(v).trim();
+    if (!s) return null;
+    const m = s.match(/^([\d.]+)\s*([hdm]?)$/i);
+    if (!m) return parseInt(s, 10) || 0;
+    const n = parseFloat(m[1]);
+    const u = (m[2] || "m").toLowerCase();
+    if (u === "h") return Math.round(n * 60);
+    if (u === "d") return Math.round(n * 60 * 24);
+    return Math.round(n);
+  }
+
+  function bindAdminTable() {
+    if (!IS_ADMIN) return;
+    const tbody = document.querySelector("#ticketsTable tbody");
+    // Toggle Original/Edited
+    tbody.addEventListener("click", (e) => {
+      const btn = e.target.closest(".switch button");
+      if (!btn) return;
+      const sw = btn.closest(".switch");
+      const key = sw.dataset.key;
+      STATE.showEdited[key] = btn.dataset.mode === "edited";
+      renderTable();
+      e.stopPropagation();
+    });
+    // Inline edit on click
+    tbody.addEventListener("click", (e) => {
+      const cell = e.target.closest("td.editable");
+      if (!cell) return;
+      if (cell.querySelector("input")) return;
+      const row = cell.closest("tr.row");
+      const key = row.dataset.key;
+      const field = cell.dataset.field;
+      const current = cell.innerText.replace(/\s+/g, " ").trim();
+      const input = document.createElement("input");
+      input.value = current === "—" ? "" : current;
+      cell.innerHTML = "";
+      cell.appendChild(input);
+      input.focus(); input.select();
+      const commit = async () => {
+        let v = input.value.trim();
+        let parsed = v;
+        if (["bm_design_first","bm_design_last","bm_waiting_customer"].includes(field)) parsed = parseMinFromInput(v);
+        else if (field === "corrections") parsed = parseInt(v, 10) || 0;
+        else if (field === "delivered_at" && v) parsed = new Date(v).toISOString();
+        const payload = { ...(STATE.edits[key] || {}) };
+        delete payload.key; delete payload.updated_by; delete payload.updated_at;
+        payload[field] = parsed === "" ? null : parsed;
+        try {
+          await saveEdit(key, payload);
+          cell.classList.add("dirty");
+        } catch (err) {
+          alert("Save failed: " + err.message);
+        }
+        renderTable();
+      };
+      input.addEventListener("blur", commit);
+      input.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+        if (e.key === "Escape") { renderTable(); }
+      });
+      e.stopPropagation();
+    });
   }
 
   function bindRowExpansion() {
@@ -891,7 +1165,7 @@
       const detail = document.createElement("tr");
       detail.className = "detail";
       const cell = document.createElement("td");
-      cell.colSpan = 11;
+      cell.colSpan = IS_ADMIN ? 12 : 11;
       cell.innerHTML = `<div class="timeline"><div style="color:var(--grey-3);font-size:12px;">Loading timeline…</div></div>`;
       detail.appendChild(cell);
       tr.after(detail);
@@ -1007,12 +1281,28 @@
     $("filterTo").addEventListener("change", () => loadAndRender(true));
     $("filterKind").addEventListener("change", () => loadAndRender(true));
     $("filterSpecs").addEventListener("change", () => loadAndRender(true));
+    // Rep chart toggle
+    const repToggle = $("repToggle");
+    if (repToggle) {
+      repToggle.addEventListener("click", e => {
+        const b = e.target.closest("button");
+        if (!b) return;
+        repToggle.querySelectorAll("button").forEach(x => x.classList.remove("active"));
+        b.classList.add("active");
+        STATE.repMode = b.dataset.mode;
+        if (STATE.data?.scoped) renderRepChart(STATE.data.scoped.by_sales_rep || [], STATE.repMode);
+      });
+    }
     $("tableSearch").addEventListener("input", (e) => {
       STATE.search = e.target.value;
       renderTable();
     });
     bindHeaderSort();
     bindRowExpansion();
+    bindAdminTable();
+    if (IS_ADMIN) {
+      const h = $("adminColHeader"); if (h) h.style.display = "";
+    }
   }
 
   /* ===================== LOGIN ===================== */
@@ -1020,13 +1310,58 @@
   function showApp() { $("login").style.display = "none"; $("app").hidden = false; }
 
   async function bootstrap() {
-    // First-time UI: prefill last 90 days
+    // From defaults to the earliest data point we have in D1 (2026-04-01).
     const today = new Date();
-    const ago = new Date(today); ago.setDate(today.getDate() - 90);
-    if (!$("filterFrom").value) $("filterFrom").value = isoDay(ago);
+    $("filterFrom").min = CONFIG.MIN_DATE;
+    $("filterTo").min   = CONFIG.MIN_DATE;
+    $("filterTo").max   = isoDay(today);
+    if (!$("filterFrom").value) $("filterFrom").value = CONFIG.MIN_DATE;
     if (!$("filterTo").value)   $("filterTo").value   = isoDay(today);
+    if (IS_ADMIN) {
+      document.body.classList.add("admin-mode");
+      const sub = document.querySelector("header .subtitle");
+      if (sub) sub.innerHTML += `<span class="admin-badge">Admin · editable</span>`;
+      await loadEdits();
+    }
     wireUp();
     await loadAndRender(false);
+  }
+
+  async function loadEdits() {
+    try {
+      const r = await apiGet("/api/admin/edits");
+      STATE.edits = r.edits || {};
+    } catch (e) { console.warn("loadEdits failed", e); }
+  }
+
+  async function saveEdit(key, payload) {
+    const res = await fetch(CONFIG.API_BASE + "/api/admin/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ key, ...payload, updated_by: "dashboard" }),
+    });
+    if (!res.ok) throw new Error("save failed: " + res.status);
+    STATE.edits[key] = { key, ...payload };
+  }
+
+  function applyOverride(row) {
+    if (!IS_ADMIN) return row;
+    if (!STATE.showEdited[row.key]) return row;
+    const o = STATE.edits[row.key];
+    if (!o) return row;
+    return {
+      ...row,
+      market: o.market ?? row.market,
+      seedtagSpecs: o.seedtag_specs ?? row.seedtagSpecs,
+      status: o.status ?? row.status,
+      summary: o.summary ?? row.summary,
+      designFirstMin: o.bm_design_first ?? row.designFirstMin,
+      designLastMin:  o.bm_design_last  ?? row.designLastMin,
+      designMin:      o.bm_design_last  ?? row.designMin,
+      waitingMin: o.bm_waiting_customer ?? row.waitingMin,
+      corrections: o.corrections ?? row.corrections,
+      deliveredAt: o.delivered_at ?? row.deliveredAt,
+    };
   }
 
   document.addEventListener("DOMContentLoaded", () => {
