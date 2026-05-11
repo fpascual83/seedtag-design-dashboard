@@ -323,6 +323,50 @@
       color: var(--grey-3); margin-bottom: 14px;
     }
 
+    /* SLA timeline */
+    .sla-timeline {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .sla-period {
+      background: var(--card);
+      border: 1px solid var(--grey-5);
+      border-radius: 12px;
+      padding: 14px 18px;
+      color: var(--white);
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+      transition: border-color .15s, background .15s;
+    }
+    .sla-period:hover {
+      border-color: var(--coral);
+      background: rgba(255,107,124,0.05);
+    }
+    .sla-period.active {
+      border-color: var(--coral);
+      background: rgba(255,107,124,0.12);
+    }
+    .sla-period .sla-range {
+      font-size: 11px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.14em;
+      margin-bottom: 6px;
+    }
+    .sla-period .sla-targets {
+      font-size: 13px; color: var(--grey-1);
+    }
+    .sla-period .sla-targets strong {
+      color: var(--coral); font-weight: 500; font-size: 16px;
+    }
+    .sla-period .sla-targets .sep {
+      color: var(--grey-5); margin: 0 4px;
+    }
+    @media (max-width: 1100px) {
+      .sla-timeline { grid-template-columns: 1fr; }
+    }
+
     /* KPIs */
     .kpi-grid {
       display: grid;
@@ -631,6 +675,23 @@
     <main>
       <div id="errorBanner" class="error-banner"></div>
 
+      <!-- SLA timeline: clickable period cards -->
+      <div class="section-marker">S L A &nbsp; T I M E L I N E &nbsp; · &nbsp; C L I C K &nbsp; T O &nbsp; F I L T E R</div>
+      <div class="sla-timeline" id="slaTimeline">
+        <button class="sla-period" data-from="2026-01-01" data-to="2026-03-31">
+          <div class="sla-range">1 Jan → 1 Apr 2026</div>
+          <div class="sla-targets"><strong>8h</strong> · 1st delivery <span class="sep">/</span> <strong>16h</strong> · total</div>
+        </button>
+        <button class="sla-period" data-from="2026-04-01" data-to="2026-05-10">
+          <div class="sla-range">1 Apr → 11 May 2026</div>
+          <div class="sla-targets"><strong>16h</strong> · 1st delivery <span class="sep">/</span> <strong>24h</strong> · total</div>
+        </button>
+        <button class="sla-period" data-from="2026-05-11" data-to="">
+          <div class="sla-range">11 May → today</div>
+          <div class="sla-targets"><strong>8h</strong> · 1st delivery <span class="sep">/</span> <strong>16h</strong> · total</div>
+        </button>
+      </div>
+
       <!-- KPIs -->
       <div class="section-marker">K E Y &nbsp; M E T R I C S</div>
       <div class="kpi-grid">
@@ -799,7 +860,7 @@
   const CONFIG = {
     PASSWORD: "SDS2026",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    CACHE_KEY: "sds-dashboard-v10",
+    CACHE_KEY: "sds-dashboard-v11",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
     REGIONS: {
@@ -1354,7 +1415,18 @@
     STATE.refreshTimer = setTimeout(() => { STATE.refreshTimer = null; loadAndRender(true); }, 220);
   }
 
+  function highlightSlaPeriod() {
+    const f = $("filterFrom").value, t = $("filterTo").value;
+    const today = isoDay(new Date());
+    document.querySelectorAll(".sla-period").forEach(btn => {
+      const bf = btn.dataset.from || "";
+      const bt = btn.dataset.to   || today;
+      btn.classList.toggle("active", bf === f && bt === t);
+    });
+  }
+
   function afterLoad(ts) {
+    highlightSlaPeriod();
     // Capture all markets we have ever seen so the filter dropdown is stable.
     if (STATE.data && STATE.data.table) {
       const seen = new Set(STATE.knownMarkets);
@@ -1375,6 +1447,20 @@
   /* ===================== EVENT WIRING ===================== */
   function wireUp() {
     $("btnRefresh").addEventListener("click", () => loadAndRender(true));
+
+    // SLA timeline: clicking a period sets the From/To and reloads.
+    document.querySelectorAll(".sla-period").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const from = btn.dataset.from || "";
+        const to   = btn.dataset.to   || isoDay(new Date());
+        $("filterFrom").value = from;
+        $("filterTo").value   = to;
+        document.querySelectorAll(".sla-period").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        scheduleReload();
+      });
+    });
+
     $("filterMarket").addEventListener("change", scheduleReload);
     $("filterFrom").addEventListener("change", scheduleReload);
     $("filterTo").addEventListener("change", scheduleReload);
