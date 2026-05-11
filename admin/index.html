@@ -1831,10 +1831,10 @@
   }
 
   function applyOverride(row) {
-    if (!IS_ADMIN) return row;
-    if (!STATE.showEdited[row.key]) return row;
-    const o = STATE.edits[row.key];
+    // Public always sees corrected values. Admin can toggle each row back to original.
+    const o = STATE.edits && STATE.edits[row.key];
     if (!o) return row;
+    if (IS_ADMIN && !STATE.showEdited[row.key]) return row;
     return {
       ...row,
       market: o.market ?? row.market,
