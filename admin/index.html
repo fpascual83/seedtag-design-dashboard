@@ -269,11 +269,14 @@
 
     /* Admin badge + edit switch */
     /* Show / hide sections based on body mode set in JS */
-    .admin-only { display: none; }
-    body.admin-mode .admin-only { display: ""; }
-    body.admin-mode .charts-grid.admin-only { display: grid; }
-    body.admin-mode .public-only { display: none; }
-    body.admin-mode .filter.admin-only { display: flex; }
+    .admin-only,
+    .charts-grid.admin-only,
+    .filter.admin-only,
+    .section-marker.admin-only { display: none !important; }
+    body.admin-mode .admin-only            { display: revert !important; }
+    body.admin-mode .charts-grid.admin-only{ display: grid  !important; }
+    body.admin-mode .filter.admin-only     { display: flex  !important; }
+    body.admin-mode .public-only           { display: none  !important; }
 
     .admin-badge {
       display: inline-block; margin-left: 12px;
