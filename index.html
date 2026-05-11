@@ -123,7 +123,11 @@
       position: relative;
       padding: 32px 40px 24px;
       border-bottom: 1px solid var(--grey-5);
-      overflow: hidden;
+      /* overflow visible so the Operator entity dropdown can escape the header.
+         Lenses are wrapped in a clipping container below. */
+    }
+    header .lens-bg {
+      position: absolute; inset: 0; overflow: hidden; pointer-events: none;
     }
     header .lens {
       position: absolute; pointer-events: none;
@@ -538,9 +542,11 @@
   <!-- ================= APP ================= -->
   <div id="app" hidden>
     <header class="app-header">
-      <div class="lens h1"></div>
-      <div class="lens h2"></div>
-      <div class="lens h3"></div>
+      <div class="lens-bg">
+        <div class="lens h1"></div>
+        <div class="lens h2"></div>
+        <div class="lens h3"></div>
+      </div>
 
       <div class="header-top">
         <div class="brand">
@@ -852,7 +858,6 @@
       <div class="panel-actions">
         <button type="button" data-act="all">Select all</button>
         <button type="button" data-act="none">Clear</button>
-        <button type="button" data-act="emea">EMEA only</button>
       </div>
       ${list.map(m => `<label><input type="checkbox" value="${m}"> ${m}</label>`).join("")}`;
     const cbs = () => [...panel.querySelectorAll('input[type=checkbox]')];
