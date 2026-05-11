@@ -745,7 +745,7 @@
       </div>
 
       <!-- Charts -->
-      <div class="section-marker">V O L U M E S &nbsp; · &nbsp; I G N O R E S &nbsp; D A T E / K I N D / S P E C S &nbsp; F I L T E R S</div>
+      <div class="section-marker">V O L U M E S &nbsp; · &nbsp; R E S P E C T S &nbsp; D A T E &nbsp; · &nbsp; I G N O R E S &nbsp; K I N D / S P E C S</div>
       <div class="charts-grid">
 
         <div class="chart-card dark">
@@ -756,7 +756,7 @@
               <button data-mode="kind">Kind</button>
             </span>
           </h3>
-          <div class="chart-sub">Mon–Fri · respects operator entity filter</div>
+          <div class="chart-sub">Mon–Fri · respects operator entity + date filters</div>
           <div class="chart-wrap"><canvas id="chartWeekday"></canvas></div>
         </div>
 
@@ -768,7 +768,7 @@
               <button data-mode="kind">Kind</button>
             </span>
           </h3>
-          <div class="chart-sub">respects operator entity filter</div>
+          <div class="chart-sub">respects operator entity + date filters</div>
           <div class="chart-wrap"><canvas id="chartMonthly"></canvas></div>
         </div>
 
@@ -784,7 +784,7 @@
               <button data-metric="time">Time</button>
             </span>
           </h3>
-          <div class="chart-sub">respects operator entity filter</div>
+          <div class="chart-sub">respects operator entity + date filters</div>
           <div class="chart-wrap"><canvas id="chartByOperator"></canvas></div>
         </div>
 
@@ -800,19 +800,19 @@
               <button data-metric="time">Time</button>
             </span>
           </h3>
-          <div class="chart-sub">top 15 reps · respects operator entity filter</div>
+          <div class="chart-sub">top 15 reps · respects operator entity + date filters</div>
           <div class="chart-wrap"><canvas id="chartByRep"></canvas></div>
         </div>
 
       </div>
 
       <!-- In progress tickets -->
-      <div class="section-marker">I N &nbsp; P R O G R E S S &nbsp; · &nbsp; I G N O R E S &nbsp; D A T E / K I N D / S P E C S</div>
+      <div class="section-marker">I N &nbsp; P R O G R E S S &nbsp; · &nbsp; A L L &nbsp; F I L T E R S</div>
       <div class="table-card" style="margin-bottom: 24px;">
         <div class="header-row">
           <div>
             <h3>In progress tickets</h3>
-            <div class="table-sub" id="inProgressSub">— tickets not yet delivered · respects operator entity filter</div>
+            <div class="table-sub" id="inProgressSub">— tickets not yet delivered · respects operator entity + date filters</div>
           </div>
           <div class="chart-toggle" id="inProgFilter">
             <button data-mode="all" class="active">All</button>
@@ -908,7 +908,7 @@
   const CONFIG = {
     PASSWORD: "SDS2026",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    CACHE_KEY: "sds-dashboard-v15",
+    CACHE_KEY: "sds-dashboard-v16",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
     REGIONS: {
@@ -1423,7 +1423,7 @@
       if (mode === "waiting") return  r.isWaitingCustomer;
       return true;
     });
-    $("inProgressSub").textContent = `${filtered.length.toLocaleString()} tickets · respects operator entity filter`;
+    $("inProgressSub").textContent = `${filtered.length.toLocaleString()} tickets · respects operator entity + date filters`;
     tbody.innerHTML = filtered.slice(0, 500).map(r => `
       <tr class="row" data-key="${escapeHtml(r.key)}">
         <td class="key-cell"><a href="https://seedtag.atlassian.net/browse/${escapeHtml(r.key)}" target="_blank" rel="noopener">${escapeHtml(r.key)}</a></td>
