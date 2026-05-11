@@ -1364,22 +1364,10 @@
     };
   }
 
+  // Password gate removed — public dashboard. Worker enforces CORS allow-list.
   document.addEventListener("DOMContentLoaded", () => {
-    if (checkLoggedIn()) { showApp(); bootstrap(); return; }
-    $("loginForm").addEventListener("submit", (e) => {
-      e.preventDefault();
-      const v = $("pwd").value;
-      if (v === CONFIG.PASSWORD) {
-        sessionStorage.setItem("sds_authed", "1");
-        $("loginErr").textContent = "";
-        showApp();
-        bootstrap();
-      } else {
-        $("loginErr").textContent = "Incorrect password.";
-        $("pwd").value = "";
-        $("pwd").focus();
-      }
-    });
+    showApp();
+    bootstrap();
   });
   </script>
 </body>
