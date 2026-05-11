@@ -268,6 +268,13 @@
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
     /* Admin badge + edit switch */
+    /* Show / hide sections based on body mode set in JS */
+    .admin-only { display: none; }
+    body.admin-mode .admin-only { display: ""; }
+    body.admin-mode .charts-grid.admin-only { display: grid; }
+    body.admin-mode .public-only { display: none; }
+    body.admin-mode .filter.admin-only { display: flex; }
+
     .admin-badge {
       display: inline-block; margin-left: 12px;
       background: var(--coral); color: var(--white);
@@ -677,6 +684,22 @@
               <option value="not_needed">Not needed</option>
             </select>
           </div>
+          <div class="filter admin-only">
+            <label>Brand assignee</label>
+            <details class="dropdown" id="brandDropdown">
+              <summary id="brandSummary">All</summary>
+              <div class="dropdown-panel" id="brandPanel"></div>
+            </details>
+            <select id="filterBrandAssignee" multiple style="display:none"></select>
+          </div>
+          <div class="filter admin-only">
+            <label>Assignee</label>
+            <details class="dropdown" id="assigneeDropdown">
+              <summary id="assigneeSummary">All</summary>
+              <div class="dropdown-panel" id="assigneePanel"></div>
+            </details>
+            <select id="filterAssignee" multiple style="display:none"></select>
+          </div>
           <button class="btn-refresh" id="btnRefresh">Refresh</button>
         </div>
       </div>
@@ -744,9 +767,9 @@
         </div>
       </div>
 
-      <!-- Charts -->
-      <div class="section-marker">V O L U M E S &nbsp; · &nbsp; R E S P E C T S &nbsp; D A T E &nbsp; · &nbsp; I G N O R E S &nbsp; K I N D / S P E C S</div>
-      <div class="charts-grid">
+      <!-- Charts (public view) -->
+      <div class="section-marker public-only">V O L U M E S &nbsp; · &nbsp; R E S P E C T S &nbsp; D A T E &nbsp; · &nbsp; I G N O R E S &nbsp; K I N D / S P E C S</div>
+      <div class="charts-grid public-only">
 
         <div class="chart-card dark">
           <h3>Tickets created by weekday
@@ -804,6 +827,43 @@
           <div class="chart-wrap"><canvas id="chartByRep"></canvas></div>
         </div>
 
+      </div>
+
+      <!-- Admin-only charts: assigned-by-week/month, Quality, Best Practices -->
+      <div class="section-marker admin-only">A D M I N &nbsp; · &nbsp; A S S I G N E E &nbsp; & &nbsp; Q U A L I T Y</div>
+      <div class="charts-grid admin-only">
+        <div class="chart-card dark">
+          <h3>Tickets assigned by week
+            <span class="chart-toggle metric-toggle" data-chart="weekAdm">
+              <button data-metric="volume" class="active">Volume</button>
+              <button data-metric="time">Time</button>
+              <button data-metric="formats">Formats</button>
+            </span>
+          </h3>
+          <div class="chart-sub">ISO week · respects all filters</div>
+          <div class="chart-wrap"><canvas id="chartWeekAdm"></canvas></div>
+        </div>
+        <div class="chart-card dark">
+          <h3>Tickets assigned by month
+            <span class="chart-toggle metric-toggle" data-chart="monthAdm">
+              <button data-metric="volume" class="active">Volume</button>
+              <button data-metric="time">Time</button>
+              <button data-metric="formats">Formats</button>
+            </span>
+          </h3>
+          <div class="chart-sub">respects all filters</div>
+          <div class="chart-wrap"><canvas id="chartMonthAdm"></canvas></div>
+        </div>
+        <div class="chart-card dark">
+          <h3>Quality</h3>
+          <div class="chart-sub">distribution of Quality field across tickets</div>
+          <div class="chart-wrap"><canvas id="chartQuality"></canvas></div>
+        </div>
+        <div class="chart-card dark">
+          <h3>Best practices · To Fix visits</h3>
+          <div class="chart-sub">how many times tickets returned to "To Fix"</div>
+          <div class="chart-wrap"><canvas id="chartToFix"></canvas></div>
+        </div>
       </div>
 
       <!-- In progress tickets -->
@@ -908,7 +968,7 @@
   const CONFIG = {
     PASSWORD: "SDS2026",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    CACHE_KEY: "sds-dashboard-v16",
+    CACHE_KEY: "sds-dashboard-v17",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
     REGIONS: {
@@ -984,13 +1044,15 @@
     }
     return res.json();
   }
-  async function fetchDashboard({ market, from, to, kind, specs }) {
+  async function fetchDashboard({ market, from, to, kind, specs, brand, assignee }) {
     const params = new URLSearchParams();
     if (market && market.length) params.set("market", market.join(","));
     if (from) params.set("from", from);
     if (to)   params.set("to",   to);
     if (kind && kind !== "all") params.set("kind", kind);
     if (specs && specs !== "all") params.set("specs", specs);
+    if (brand && brand.length) params.set("brand_assignee", brand.join(","));
+    if (assignee && assignee.length) params.set("assignee", assignee.join(","));
     return apiGet("/api/dashboard?" + params.toString());
   }
   async function fetchIssue(key) {
@@ -1006,11 +1068,13 @@
     search: "",
     charts: {},
     knownMarkets: [],
-    chartModes: {          // mode = total | specs | kind ; metric = volume | time
+    chartModes: {
       weekday:  { mode: "total", metric: "volume" },
       month:    { mode: "total", metric: "volume" },
       operator: { mode: "total", metric: "volume" },
       rep:      { mode: "total", metric: "volume" },
+      weekAdm:  { mode: "total", metric: "volume" },   // admin: weekly assigned
+      monthAdm: { mode: "total", metric: "volume" },   // admin: monthly assigned
     },
     edits: {},
     showEdited: {},
@@ -1026,7 +1090,11 @@
     const markets = Array.from(sel.selectedOptions).map(o => o.value);
     const kind = $("filterKind") ? $("filterKind").value : "all";
     const specs = $("filterSpecs") ? $("filterSpecs").value : "all";
-    return { market: markets, from: fromVal || "", to: toVal || "", kind, specs };
+    const brandSel = $("filterBrandAssignee");
+    const brand = brandSel ? Array.from(brandSel.selectedOptions).map(o => o.value) : [];
+    const assSel = $("filterAssignee");
+    const assignee = assSel ? Array.from(assSel.selectedOptions).map(o => o.value) : [];
+    return { market: markets, from: fromVal || "", to: toVal || "", kind, specs, brand, assignee };
   }
 
   function setupMarketFilter(markets) {
@@ -1235,10 +1303,81 @@
   function renderCharts(d) {
     Chart.defaults.font.family = "'Instrument Sans', sans-serif";
     const s = d.scoped || {};
-    renderVerticalBars("chartWeekday",    s.weekday_created || [], "day",    STATE.chartModes.weekday);
-    renderVerticalBars("chartMonthly",    s.monthly_created || [], "month",  STATE.chartModes.month);
-    renderHorizontalBars("chartByOperator", s.by_operator   || [], "market", STATE.chartModes.operator, 20);
-    renderHorizontalBars("chartByRep",      s.by_sales_rep  || [], "rep",    STATE.chartModes.rep, 15);
+    if (IS_ADMIN) {
+      renderAdminBar("chartWeekAdm",  s.weekly_assigned  || [], "week",  STATE.chartModes.weekAdm);
+      renderAdminBar("chartMonthAdm", s.monthly_assigned || [], "month", STATE.chartModes.monthAdm);
+      renderDistribution("chartQuality", s.quality_dist || [], "value", "Quality");
+      renderDistribution("chartToFix",   s.to_fix_dist  || [], "bucket", "Tickets");
+    } else {
+      renderVerticalBars("chartWeekday",    s.weekday_created || [], "day",    STATE.chartModes.weekday);
+      renderVerticalBars("chartMonthly",    s.monthly_created || [], "month",  STATE.chartModes.month);
+      renderHorizontalBars("chartByOperator", s.by_operator   || [], "market", STATE.chartModes.operator, 20);
+      renderHorizontalBars("chartByRep",      s.by_sales_rep  || [], "rep",    STATE.chartModes.rep, 15);
+    }
+  }
+
+  /* Admin: weekly/monthly assigned with Volume/Time/Formats switch. */
+  function renderAdminBar(canvasId, rows, labelKey, modeState) {
+    const m = modeState.metric;
+    const field = m === "time" ? "t" : m === "formats" ? "formats" : "n";
+    const unit  = m === "time" ? "h" : "";
+    const labelText = m === "time" ? "Time" : m === "formats" ? "Formats" : "Tickets";
+    makeChart(canvasId, {
+      type: "bar",
+      data: {
+        labels: rows.map(r => r[labelKey]),
+        datasets: [{
+          label: labelText,
+          data: rows.map(r => m === "time" ? (r.t || 0) : (r[field] || 0)),
+          backgroundColor: COLOR.coral, borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => {
+            const v = ctx.parsed.y;
+            return m === "time" ? `${labelText}: ${(v/60).toFixed(1)}h` : `${labelText}: ${v}`;
+          }}},
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: COLOR.grey3, autoSkip: false } },
+          y: { grid: { color: "rgba(255,255,255,0.05)" },
+               ticks: { color: COLOR.grey3, precision: 0,
+                        callback: m === "time" ? (v => `${Math.round(v/60)}h`) : (v => v) } },
+        },
+      },
+    });
+  }
+
+  /* Generic single-axis distribution chart (Quality, To Fix). */
+  function renderDistribution(canvasId, rows, labelKey, label) {
+    makeChart(canvasId, {
+      type: "bar",
+      data: {
+        labels: rows.map(r => r[labelKey]),
+        datasets: [{ label, data: rows.map(r => r.n), backgroundColor: COLOR.coral, borderRadius: 4 }],
+      },
+      options: {
+        indexAxis: "y", responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.x;
+              const total = ctx.chart.data.datasets[0].data.reduce((a,b) => a+b, 0);
+              const pct = total ? Math.round(v/total*100) : 0;
+              return `${ctx.label}: ${pct}% · ${v}`;
+            },
+          }},
+        },
+        scales: {
+          x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0 } },
+          y: { grid: { display: false }, ticks: { color: COLOR.grey3, autoSkip: false } },
+        },
+      },
+    });
   }
 
   function filteredTable() {
@@ -1520,6 +1659,39 @@
     });
   }
 
+  // Generic builder for admin people-dropdowns (Brand Assignee, Assignee).
+  function setupPeopleDropdown({ panelId, summaryId, selectId, names }) {
+    const panel = $(panelId), summary = $(summaryId), sel = $(selectId);
+    if (!panel || !names || !names.length) return;
+    sel.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+    if (panel.dataset.built === "1") return;
+    panel.dataset.built = "1";
+    panel.innerHTML = `
+      <div class="panel-actions">
+        <button type="button" data-act="all">All</button>
+        <button type="button" data-act="none">Clear</button>
+      </div>
+      ${names.map(n => `<label><input type="checkbox" value="${escapeHtml(n)}"> ${escapeHtml(n)}</label>`).join("")}`;
+    const cbs = () => [...panel.querySelectorAll('input[type=checkbox]')];
+    function sync() {
+      const picked = cbs().filter(c => c.checked).map(c => c.value);
+      [...sel.options].forEach(o => o.selected = picked.includes(o.value));
+      summary.textContent = picked.length === 0 ? "All" :
+        picked.length === 1 ? picked[0] :
+        picked.length <= 2 ? picked.join(", ") :
+        `${picked.length} selected`;
+      scheduleReload();
+    }
+    panel.addEventListener("change", e => { if (e.target.tagName === "INPUT") sync(); });
+    panel.querySelectorAll(".panel-actions button").forEach(b => {
+      b.addEventListener("click", () => {
+        const a = b.dataset.act;
+        cbs().forEach(c => { c.checked = (a === "all"); });
+        sync();
+      });
+    });
+  }
+
   function afterLoad(ts) {
     highlightSlaPeriod();
     // Capture all markets we have ever seen so the filter dropdown is stable.
@@ -1528,6 +1700,17 @@
       STATE.data.table.forEach(r => { if (r.market && r.market !== "—") seen.add(r.market); });
       STATE.knownMarkets = Array.from(seen).sort();
       if (!$("filterMarket").options.length) setupMarketFilter(STATE.knownMarkets);
+    }
+    // Populate admin people dropdowns when applicable
+    if (IS_ADMIN && STATE.data?.people) {
+      setupPeopleDropdown({
+        panelId: "brandPanel", summaryId: "brandSummary", selectId: "filterBrandAssignee",
+        names: STATE.data.people.brand_assignees || [],
+      });
+      setupPeopleDropdown({
+        panelId: "assigneePanel", summaryId: "assigneeSummary", selectId: "filterAssignee",
+        names: STATE.data.people.assignees || [],
+      });
     }
     const lastSync = STATE.data && STATE.data.last_sync_at;
     const ageMin = lastSync ? Math.round((Date.now() - new Date(lastSync).getTime()) / 60000) : null;
