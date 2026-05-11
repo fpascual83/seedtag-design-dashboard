@@ -1465,6 +1465,7 @@
       const sw = btn.closest(".switch");
       const key = sw.dataset.key;
       STATE.showEdited[key] = btn.dataset.mode === "edited";
+      try { localStorage.setItem("sds_show_edited", JSON.stringify(STATE.showEdited)); } catch (_) {}
       renderTable();
       e.stopPropagation();
     });
@@ -1807,6 +1808,7 @@
       const sub = document.querySelector("header .subtitle");
       if (sub) sub.innerHTML += `<span class="admin-badge">Admin · editable</span>`;
     }
+    try { const raw = localStorage.getItem("sds_show_edited"); if (raw) Object.assign(STATE.showEdited, JSON.parse(raw)); } catch (_) {}
     // Always load edit overrides — public dashboard shows corrected values.
     await loadEdits();
     wireUp();
