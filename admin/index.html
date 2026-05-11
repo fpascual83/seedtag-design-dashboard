@@ -1806,8 +1806,9 @@
       document.body.classList.add("admin-mode");
       const sub = document.querySelector("header .subtitle");
       if (sub) sub.innerHTML += `<span class="admin-badge">Admin · editable</span>`;
-      await loadEdits();
     }
+    // Always load edit overrides — public dashboard shows corrected values.
+    await loadEdits();
     wireUp();
     await loadAndRender(false);
   }
