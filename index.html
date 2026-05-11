@@ -244,18 +244,28 @@
 
     /* Chart toggle pills */
     .chart-toggle {
-      display: inline-flex; gap: 4px; margin-left: 12px;
+      display: inline-flex; gap: 4px; margin-left: 10px;
       vertical-align: middle;
     }
     .chart-toggle button {
       background: transparent; color: var(--grey-3);
       border: 1px solid var(--grey-5); border-radius: 6px;
-      padding: 3px 10px; font-size: 10px; cursor: pointer;
+      padding: 3px 8px; font-size: 10px; cursor: pointer;
       text-transform: uppercase; letter-spacing: 0.1em;
     }
     .chart-toggle button.active {
       color: var(--coral); border-color: var(--coral);
     }
+    .chart-card h3 {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    }
+    /* Soft "refreshing" indicator in header (no fullscreen overlay) */
+    .refreshing #lastUpdated::after {
+      content: "  ·  refreshing…";
+      color: var(--coral);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
     /* Admin badge + edit switch */
     .admin-badge {
@@ -648,32 +658,63 @@
       <!-- Charts -->
       <div class="section-marker">V O L U M E S &nbsp; · &nbsp; I G N O R E S &nbsp; D A T E / K I N D / S P E C S &nbsp; F I L T E R S</div>
       <div class="charts-grid">
+
         <div class="chart-card dark">
-          <h3>Tickets created by weekday</h3>
-          <div class="chart-sub">stacked by Specs status · Mon–Fri</div>
-          <div class="chart-wrap"><canvas id="chartWeekday"></canvas></div>
-        </div>
-        <div class="chart-card dark">
-          <h3>Tickets created by month</h3>
-          <div class="chart-sub">stacked by Specs status</div>
-          <div class="chart-wrap"><canvas id="chartMonthly"></canvas></div>
-        </div>
-        <div class="chart-card dark">
-          <h3>Specs distribution</h3>
-          <div class="chart-sub">% of tickets · Sent / Not sent / Not needed</div>
-          <div class="chart-wrap donut"><canvas id="chartSpecs"></canvas></div>
-        </div>
-        <div class="chart-card dark">
-          <h3>By Sales Rep
-            <span class="chart-toggle" id="repToggle">
+          <h3>Tickets created by weekday
+            <span class="chart-toggle" data-chart="weekday">
               <button data-mode="total" class="active">Total</button>
               <button data-mode="specs">Specs</button>
               <button data-mode="kind">Kind</button>
             </span>
           </h3>
+          <div class="chart-sub">Mon–Fri · respects operator entity filter</div>
+          <div class="chart-wrap"><canvas id="chartWeekday"></canvas></div>
+        </div>
+
+        <div class="chart-card dark">
+          <h3>Tickets created by month
+            <span class="chart-toggle" data-chart="month">
+              <button data-mode="total" class="active">Total</button>
+              <button data-mode="specs">Specs</button>
+              <button data-mode="kind">Kind</button>
+            </span>
+          </h3>
+          <div class="chart-sub">respects operator entity filter</div>
+          <div class="chart-wrap"><canvas id="chartMonthly"></canvas></div>
+        </div>
+
+        <div class="chart-card dark">
+          <h3>By Operator entity
+            <span class="chart-toggle" data-chart="operator">
+              <button data-mode="total" class="active">Total</button>
+              <button data-mode="specs">Specs</button>
+              <button data-mode="kind">Kind</button>
+            </span>
+            <span class="chart-toggle metric-toggle" data-chart="operator">
+              <button data-metric="volume" class="active">Volume</button>
+              <button data-metric="time">Time</button>
+            </span>
+          </h3>
+          <div class="chart-sub">respects operator entity filter</div>
+          <div class="chart-wrap"><canvas id="chartByOperator"></canvas></div>
+        </div>
+
+        <div class="chart-card dark">
+          <h3>By Sales Rep
+            <span class="chart-toggle" data-chart="rep">
+              <button data-mode="total" class="active">Total</button>
+              <button data-mode="specs">Specs</button>
+              <button data-mode="kind">Kind</button>
+            </span>
+            <span class="chart-toggle metric-toggle" data-chart="rep">
+              <button data-metric="volume" class="active">Volume</button>
+              <button data-metric="time">Time</button>
+            </span>
+          </h3>
           <div class="chart-sub">top 15 reps · respects operator entity filter</div>
           <div class="chart-wrap"><canvas id="chartByRep"></canvas></div>
         </div>
+
       </div>
 
       <!-- Table -->
@@ -745,7 +786,7 @@
   const CONFIG = {
     PASSWORD: "SDS2026",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    CACHE_KEY: "sds-dashboard-v8",
+    CACHE_KEY: "sds-dashboard-v9",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
     REGIONS: {
@@ -843,9 +884,16 @@
     search: "",
     charts: {},
     knownMarkets: [],
-    repMode: "total",
+    chartModes: {          // mode = total | specs | kind ; metric = volume | time
+      weekday:  { mode: "total", metric: "volume" },
+      month:    { mode: "total", metric: "volume" },
+      operator: { mode: "total", metric: "volume" },
+      rep:      { mode: "total", metric: "volume" },
+    },
     edits: {},
-    showEdited: {},        // key → bool
+    showEdited: {},
+    initialLoad: true,     // suppress fullscreen loader after first load
+    refreshTimer: null,
   };
 
   /* ===================== FILTERS ===================== */
@@ -863,6 +911,7 @@
     const sel = $("filterMarket");
     const panel = $("marketPanel");
     if (!markets.length || !panel) return;
+    // syncFromPanel uses scheduleReload (debounced) below.
     const list = [
       ...CONFIG.EMEA_MARKETS.filter(m => markets.includes(m)),
       ...markets.filter(m => !CONFIG.EMEA_MARKETS.includes(m)).sort(),
@@ -889,7 +938,7 @@
         picked.length === 1 ? picked[0] :
         picked.length <= 3 ? picked.join(", ") :
         `${picked.length} selected`;
-      loadAndRender(true);
+      scheduleReload();
     }
     panel.addEventListener("change", e => {
       if (e.target.tagName === "INPUT") syncFromPanel();
@@ -949,111 +998,97 @@
     }));
   }
 
-  function renderCharts(d) {
-    Chart.defaults.font.family = "'Instrument Sans', sans-serif";
-    const s = d.scoped || {};
-
-    /* 1. Tickets created by weekday — stacked by specs */
-    const wd = s.weekday_created || [];
-    makeChart("chartWeekday", {
-      type: "bar",
-      data: { labels: wd.map(x => x.day), datasets: stackedDataset(wd) },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: {
-          legend: { position: "bottom", labels: { color: COLOR.white, padding: 12, boxWidth: 10, font: { size: 11 } } },
-          tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}` } },
-        },
-        scales: {
-          x: { stacked: true, grid: { display: false }, ticks: { color: COLOR.grey3 } },
-          y: { stacked: true, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0 } },
-        },
-      },
-    });
-
-    /* 2. Tickets created by month — stacked by specs */
-    const mo = s.monthly_created || [];
-    makeChart("chartMonthly", {
-      type: "bar",
-      data: { labels: mo.map(x => x.month), datasets: stackedDataset(mo) },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: {
-          legend: { position: "bottom", labels: { color: COLOR.white, padding: 12, boxWidth: 10, font: { size: 11 } } },
-          tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}` } },
-        },
-        scales: {
-          x: { stacked: true, grid: { display: false }, ticks: { color: COLOR.grey3 } },
-          y: { stacked: true, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0 } },
-        },
-      },
-    });
-
-    /* 3. Specs distribution — donut */
-    const sd = s.specs_distribution || {};
-    const keys = ["sent", "not_sent", "not_needed", "unknown"];
-    makeChart("chartSpecs", {
-      type: "doughnut",
-      data: {
-        labels: keys.map(k => SPECS_LABELS[k]),
-        datasets: [{
-          data: keys.map(k => sd[k] || 0),
-          backgroundColor: keys.map(k => SPECS_COLORS[k]),
-          borderColor: "#0d0d0d", borderWidth: 2,
-        }],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false, cutout: "62%",
-        plugins: {
-          legend: { position: "bottom", labels: { color: COLOR.white, padding: 14, boxWidth: 10, font: { size: 11 } } },
-          tooltip: { callbacks: {
-            label: ctx => {
-              const total = ctx.dataset.data.reduce((a,b) => a+b, 0);
-              const pct = total ? Math.round(ctx.parsed / total * 100) : 0;
-              return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
-            },
-          }},
-        },
-      },
-    });
-
-    /* 4. By Sales Rep — toggle Total / Specs / Kind */
-    renderRepChart(s.by_sales_rep || [], STATE.repMode || "total");
+  // Build chart datasets from the canonical bucket shape
+  // ({ n, t, n_specs, t_specs, n_kind, t_kind, ...labelKey })
+  function bucketDatasets(rows, { mode, metric, stack }) {
+    const timeMode = metric === "time";
+    const totalField = timeMode ? "t" : "n";
+    if (mode === "specs") {
+      const src = timeMode ? "t_specs" : "n_specs";
+      return ["sent","not_sent","not_needed","unknown"].map(k => ({
+        label: SPECS_LABELS[k],
+        data: rows.map(r => (r[src] || {})[k] || 0),
+        backgroundColor: SPECS_COLORS[k],
+        stack, borderWidth: 0,
+      }));
+    }
+    if (mode === "kind") {
+      const src = timeMode ? "t_kind" : "n_kind";
+      return [
+        { label: "Campaigns", data: rows.map(r => (r[src]||{}).camp || 0),  backgroundColor: COLOR.coral, stack, borderWidth: 0 },
+        { label: "Proposals", data: rows.map(r => (r[src]||{}).prop || 0),  backgroundColor: "#FFFFFF",   stack, borderWidth: 0 },
+        { label: "Other",     data: rows.map(r => (r[src]||{}).other || 0), backgroundColor: COLOR.grey3, stack, borderWidth: 0 },
+      ];
+    }
+    return [{
+      label: timeMode ? "Time" : "Tickets",
+      data: rows.map(r => r[totalField] || 0),
+      backgroundColor: COLOR.coral,
+      borderRadius: 4,
+    }];
   }
 
-  function renderRepChart(reps, mode) {
-    const top = reps.slice(0, 15);
-    const labels = top.map(r => r.rep);
-    let datasets;
-    if (mode === "specs") {
-      datasets = ["sent","not_sent","not_needed","unknown"].map(k => ({
-        label: SPECS_LABELS[k],
-        data: top.map(r => (r.by_specs || {})[k] || 0),
-        backgroundColor: SPECS_COLORS[k], stack: "x", borderWidth: 0,
-      }));
-    } else if (mode === "kind") {
-      datasets = [
-        { label: "Campaigns", data: top.map(r => (r.by_kind || {}).camp || 0), backgroundColor: COLOR.coral, stack: "x", borderWidth: 0 },
-        { label: "Proposals", data: top.map(r => (r.by_kind || {}).prop || 0), backgroundColor: "#FFFFFF", stack: "x", borderWidth: 0 },
-        { label: "Other",     data: top.map(r => (r.by_kind || {}).other || 0), backgroundColor: COLOR.grey3, stack: "x", borderWidth: 0 },
-      ];
-    } else {
-      datasets = [{ label: "Tickets", data: top.map(r => r.total), backgroundColor: COLOR.coral, borderRadius: 4 }];
-    }
-    makeChart("chartByRep", {
+  function tickLabel(metric) {
+    return metric === "time" ? (v => `${Math.round(v/60)}h`) : (v => v);
+  }
+  function tooltipLabel(metric) {
+    return (ctx) => {
+      const v = ctx.parsed.y ?? ctx.parsed.x ?? ctx.parsed;
+      const out = metric === "time" ? `${(v/60).toFixed(1)}h` : v;
+      return `${ctx.dataset.label}: ${out}`;
+    };
+  }
+
+  function renderVerticalBars(canvasId, rows, labelKey, modeState) {
+    const { mode, metric } = modeState;
+    const datasets = bucketDatasets(rows, { mode, metric, stack: "stk" });
+    const stacked = mode !== "total";
+    makeChart(canvasId, {
       type: "bar",
-      data: { labels, datasets },
+      data: { labels: rows.map(r => r[labelKey]), datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: stacked, position: "bottom", labels: { color: COLOR.white, padding: 12, boxWidth: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: tooltipLabel(metric) } },
+        },
+        scales: {
+          x: { stacked, grid: { display: false }, ticks: { color: COLOR.grey3 } },
+          y: { stacked, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0, callback: tickLabel(metric) } },
+        },
+      },
+    });
+  }
+
+  function renderHorizontalBars(canvasId, rows, labelKey, modeState, limit) {
+    const { mode, metric } = modeState;
+    const top = rows.slice(0, limit || 15);
+    const datasets = bucketDatasets(top, { mode, metric, stack: "stk" });
+    const stacked = mode !== "total";
+    makeChart(canvasId, {
+      type: "bar",
+      data: { labels: top.map(r => r[labelKey]), datasets },
       options: {
         indexAxis: "y", responsive: true, maintainAspectRatio: false,
         plugins: {
-          legend: { display: mode !== "total", position: "bottom", labels: { color: COLOR.white, padding: 12, boxWidth: 10, font: { size: 11 } } },
+          legend: { display: stacked, position: "bottom", labels: { color: COLOR.white, padding: 12, boxWidth: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: tooltipLabel(metric) } },
         },
         scales: {
-          x: { stacked: mode !== "total", grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0 } },
-          y: { stacked: mode !== "total", grid: { display: false }, ticks: { color: COLOR.grey3, font: { size: 11 } } },
+          x: { stacked, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0, callback: tickLabel(metric) } },
+          y: { stacked, grid: { display: false }, ticks: { color: COLOR.grey3, font: { size: 11 } } },
         },
       },
     });
+  }
+
+  function renderCharts(d) {
+    Chart.defaults.font.family = "'Instrument Sans', sans-serif";
+    const s = d.scoped || {};
+    renderVerticalBars("chartWeekday",    s.weekday_created || [], "day",    STATE.chartModes.weekday);
+    renderVerticalBars("chartMonthly",    s.monthly_created || [], "month",  STATE.chartModes.month);
+    renderHorizontalBars("chartByOperator", s.by_operator   || [], "market", STATE.chartModes.operator, 20);
+    renderHorizontalBars("chartByRep",      s.by_sales_rep  || [], "rep",    STATE.chartModes.rep, 15);
   }
 
   function filteredTable() {
@@ -1263,7 +1298,13 @@
       }
     }
 
-    showLoader("Loading metrics…", "");
+    // Only show the fullscreen spinner on the very first load.
+    // After that, refreshes are silent — just a subtle "refreshing…" hint.
+    if (STATE.initialLoad) {
+      showLoader("Loading metrics…", "");
+    } else {
+      document.body.classList.add("refreshing");
+    }
     try {
       const data = await fetchDashboard(filters);
       STATE.data = data;
@@ -1272,16 +1313,26 @@
     } catch (err) {
       console.error(err);
       hideLoader();
+      document.body.classList.remove("refreshing");
       showError(`
         <strong>Could not load metrics.</strong><br>
         ${escapeHtml(err.message || String(err))}<br><br>
         Likely causes:
         <ul style="margin:8px 0 0 18px;color:#D4D0CE;">
           <li>The Cloudflare Worker is down.</li>
-          <li>The Atlassian token has been rotated. Re-set the secret on the Worker (<code>wrangler secret put JIRA_TOKEN</code>) and let the next sync run.</li>
+          <li>The Atlassian token has been rotated.</li>
         </ul>
       `);
+    } finally {
+      STATE.initialLoad = false;
+      document.body.classList.remove("refreshing");
     }
+  }
+
+  // Debounce filter changes so checking 3 boxes fast doesn't fire 3 requests.
+  function scheduleReload() {
+    if (STATE.refreshTimer) clearTimeout(STATE.refreshTimer);
+    STATE.refreshTimer = setTimeout(() => { STATE.refreshTimer = null; loadAndRender(true); }, 220);
   }
 
   function afterLoad(ts) {
@@ -1305,23 +1356,26 @@
   /* ===================== EVENT WIRING ===================== */
   function wireUp() {
     $("btnRefresh").addEventListener("click", () => loadAndRender(true));
-    $("filterMarket").addEventListener("change", () => loadAndRender(true));
-    $("filterFrom").addEventListener("change", () => loadAndRender(true));
-    $("filterTo").addEventListener("change", () => loadAndRender(true));
-    $("filterKind").addEventListener("change", () => loadAndRender(true));
-    $("filterSpecs").addEventListener("change", () => loadAndRender(true));
-    // Rep chart toggle
-    const repToggle = $("repToggle");
-    if (repToggle) {
-      repToggle.addEventListener("click", e => {
+    $("filterMarket").addEventListener("change", scheduleReload);
+    $("filterFrom").addEventListener("change", scheduleReload);
+    $("filterTo").addEventListener("change", scheduleReload);
+    $("filterKind").addEventListener("change", scheduleReload);
+    $("filterSpecs").addEventListener("change", scheduleReload);
+
+    // Per-chart toggles: Total / Specs / Kind  and  Volume / Time
+    document.querySelectorAll(".chart-toggle").forEach(grp => {
+      const chart = grp.dataset.chart;
+      const isMetric = grp.classList.contains("metric-toggle");
+      grp.addEventListener("click", e => {
         const b = e.target.closest("button");
         if (!b) return;
-        repToggle.querySelectorAll("button").forEach(x => x.classList.remove("active"));
+        grp.querySelectorAll("button").forEach(x => x.classList.remove("active"));
         b.classList.add("active");
-        STATE.repMode = b.dataset.mode;
-        if (STATE.data?.scoped) renderRepChart(STATE.data.scoped.by_sales_rep || [], STATE.repMode);
+        if (isMetric) STATE.chartModes[chart].metric = b.dataset.metric;
+        else          STATE.chartModes[chart].mode   = b.dataset.mode;
+        if (STATE.data) renderCharts(STATE.data);
       });
-    }
+    });
     $("tableSearch").addEventListener("input", (e) => {
       STATE.search = e.target.value;
       renderTable();
