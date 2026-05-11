@@ -221,8 +221,9 @@
       display: flex; align-items: center; justify-content: center; height: 100%;
     }
     .dropdown-panel .panel-actions {
-      display: flex; gap: 4px; padding: 4px 4px 8px;
+      display: flex; gap: 4px; padding: 4px 4px 6px;
       border-bottom: 1px solid var(--grey-5); margin-bottom: 4px;
+      flex-wrap: wrap;
     }
     .dropdown-panel .panel-actions button {
       background: transparent; color: var(--grey-3); border: none;
@@ -230,6 +231,16 @@
       text-transform: uppercase; letter-spacing: 0.1em;
     }
     .dropdown-panel .panel-actions button:hover { color: var(--coral); }
+    .dropdown-panel .panel-regions {
+      border-bottom: 1px solid var(--grey-5); padding-top: 4px;
+    }
+    .dropdown-panel .panel-regions button {
+      border: 1px solid var(--grey-5); border-radius: 999px;
+      padding: 3px 10px;
+    }
+    .dropdown-panel .panel-regions button:hover {
+      border-color: var(--coral); color: var(--coral);
+    }
 
     /* Chart toggle pills */
     .chart-toggle {
@@ -737,6 +748,11 @@
     CACHE_KEY: "sds-dashboard-v8",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
+    REGIONS: {
+      emea:  ["ES", "UK", "IT", "DE", "MENA", "FR", "BNL"],
+      latam: ["BR", "MX", "ROLA", "AND"],
+      na:    ["US", "CA"],
+    },
     MIN_DATE: "2026-04-01",
   };
   const IS_ADMIN = /\/admin\/?$/i.test(window.location.pathname) || window.location.search.includes("admin=1");
@@ -856,8 +872,13 @@
     panel.dataset.built = "1";
     panel.innerHTML = `
       <div class="panel-actions">
-        <button type="button" data-act="all">Select all</button>
+        <button type="button" data-act="all">All</button>
         <button type="button" data-act="none">Clear</button>
+      </div>
+      <div class="panel-actions panel-regions">
+        <button type="button" data-act="region" data-region="emea">EMEA only</button>
+        <button type="button" data-act="region" data-region="latam">LATAM only</button>
+        <button type="button" data-act="region" data-region="na">NA only</button>
       </div>
       ${list.map(m => `<label><input type="checkbox" value="${m}"> ${m}</label>`).join("")}`;
     const cbs = () => [...panel.querySelectorAll('input[type=checkbox]')];
@@ -879,7 +900,10 @@
         cbs().forEach(c => {
           if (a === "all") c.checked = true;
           else if (a === "none") c.checked = false;
-          else if (a === "emea") c.checked = CONFIG.EMEA_MARKETS.includes(c.value);
+          else if (a === "region") {
+            const list = CONFIG.REGIONS[b.dataset.region] || [];
+            c.checked = list.includes(c.value);
+          }
         });
         syncFromPanel();
       });
