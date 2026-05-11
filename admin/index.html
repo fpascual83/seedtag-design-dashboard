@@ -724,7 +724,8 @@
         <div class="kpi">
           <div class="label">In progress now</div>
           <div class="value" id="kpiInProgress">—</div>
-          <div class="sub">currently active tickets</div>
+          <div class="split" id="kpiInProgressSplit"></div>
+          <div class="sub">active in Design + waiting customer</div>
         </div>
       </div>
 
@@ -788,6 +789,39 @@
           <div class="chart-wrap"><canvas id="chartByRep"></canvas></div>
         </div>
 
+      </div>
+
+      <!-- In progress tickets -->
+      <div class="section-marker">I N &nbsp; P R O G R E S S &nbsp; · &nbsp; I G N O R E S &nbsp; D A T E / K I N D / S P E C S</div>
+      <div class="table-card" style="margin-bottom: 24px;">
+        <div class="header-row">
+          <div>
+            <h3>In progress tickets</h3>
+            <div class="table-sub" id="inProgressSub">— tickets not yet delivered · respects operator entity filter</div>
+          </div>
+          <div class="chart-toggle" id="inProgFilter">
+            <button data-mode="all" class="active">All</button>
+            <button data-mode="active">Active</button>
+            <button data-mode="waiting">Waiting customer</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table id="inProgressTable">
+            <thead>
+              <tr>
+                <th data-key="key">Key</th>
+                <th data-key="summary">Summary</th>
+                <th data-key="market">Market</th>
+                <th data-key="kind">Kind</th>
+                <th data-key="seedtagSpecs">Specs</th>
+                <th data-key="status">Status</th>
+                <th data-key="createdAt">Created</th>
+                <th data-key="salesRep">Sales rep</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Table -->
@@ -859,7 +893,7 @@
   const CONFIG = {
     PASSWORD: "SDS2026",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    CACHE_KEY: "sds-dashboard-v12",
+    CACHE_KEY: "sds-dashboard-v13",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
     REGIONS: {
@@ -1044,6 +1078,9 @@
       ? `${k.first_time_pct}<span class="unit">%</span>` : "—";
     $("kpiWaiting").innerHTML = (k.avg_waiting_min != null) ? fmtMin(k.avg_waiting_min) : "—";
     $("kpiInProgress").textContent = (k.in_progress || 0).toLocaleString();
+    $("kpiInProgressSplit").innerHTML = `
+      <span><span class="tag">ACTIVE</span><strong>${k.in_progress_active ?? 0}</strong></span>
+      <span><span class="tag">WAITING</span><strong>${k.in_progress_waiting ?? 0}</strong></span>`;
 
     const splitHTML = (camp, prop) => `
       <span><span class="tag">CAMP</span><strong>${camp != null ? fmtHours(camp) + "h" : "—"}</strong></span>
@@ -1343,10 +1380,35 @@
     });
   }
 
+  function renderInProgressTable() {
+    const tbody = document.querySelector("#inProgressTable tbody");
+    const list = (STATE.data?.scoped?.in_progress_list) || [];
+    const mode = STATE.inProgFilter || "all";
+    const filtered = list.filter(r => {
+      if (mode === "active")  return !r.isWaitingCustomer;
+      if (mode === "waiting") return  r.isWaitingCustomer;
+      return true;
+    });
+    $("inProgressSub").textContent = `${filtered.length.toLocaleString()} tickets · respects operator entity filter`;
+    tbody.innerHTML = filtered.slice(0, 500).map(r => `
+      <tr class="row" data-key="${escapeHtml(r.key)}">
+        <td class="key-cell"><a href="https://seedtag.atlassian.net/browse/${escapeHtml(r.key)}" target="_blank" rel="noopener">${escapeHtml(r.key)}</a></td>
+        <td class="summary-cell">${escapeHtml(r.summary || "")}</td>
+        <td><span class="pill">${escapeHtml(r.market || "—")}</span></td>
+        <td>${r.kind && r.kind !== "—" ? `<span class="pill grey">${escapeHtml(r.kind)}</span>` : "—"}</td>
+        <td>${escapeHtml(r.seedtagSpecs || "—")}</td>
+        <td><span class="pill ${r.isWaitingCustomer ? "grey" : ""}">${escapeHtml(r.status || "—")}</span></td>
+        <td>${r.createdAt ? new Date(r.createdAt).toLocaleDateString() : "—"}</td>
+        <td>${escapeHtml(r.salesRep || "—")}</td>
+      </tr>
+    `).join("");
+  }
+
   function render() {
     if (!STATE.data) return;
     renderKPIs(STATE.data);
     renderCharts(STATE.data);
+    renderInProgressTable();
     renderTable();
   }
 
@@ -1465,6 +1527,17 @@
     $("filterTo").addEventListener("change", scheduleReload);
     $("filterKind").addEventListener("change", scheduleReload);
     $("filterSpecs").addEventListener("change", scheduleReload);
+
+    // In-progress filter toggle (All / Active / Waiting customer)
+    const ipf = $("inProgFilter");
+    if (ipf) ipf.addEventListener("click", e => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      ipf.querySelectorAll("button").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      STATE.inProgFilter = b.dataset.mode;
+      renderInProgressTable();
+    });
 
     // Per-chart toggles: Total / Specs / Kind  and  Volume / Time
     document.querySelectorAll(".chart-toggle").forEach(grp => {
