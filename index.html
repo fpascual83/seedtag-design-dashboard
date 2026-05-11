@@ -1806,8 +1806,9 @@
       document.body.classList.add("admin-mode");
       const sub = document.querySelector("header .subtitle");
       if (sub) sub.innerHTML += `<span class="admin-badge">Admin · editable</span>`;
-      await loadEdits();
     }
+    // Always load edit overrides — public dashboard shows corrected values.
+    await loadEdits();
     wireUp();
     await loadAndRender(false);
   }
@@ -1830,10 +1831,10 @@
   }
 
   function applyOverride(row) {
-    if (!IS_ADMIN) return row;
-    if (!STATE.showEdited[row.key]) return row;
-    const o = STATE.edits[row.key];
+    // Public always sees corrected values. Admin can toggle each row back to original.
+    const o = STATE.edits && STATE.edits[row.key];
     if (!o) return row;
+    if (IS_ADMIN && !STATE.showEdited[row.key]) return row;
     return {
       ...row,
       market: o.market ?? row.market,
