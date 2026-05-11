@@ -356,6 +356,17 @@
     }
     .kpi .unit { font-size: 14px; color: var(--grey-3); margin-left: 4px; font-weight: 400; }
     .kpi .sub { font-size: 12px; color: var(--grey-3); margin-top: 8px; }
+    .kpi .split {
+      display: flex; gap: 14px; margin-top: 6px;
+      font-size: 11px; color: var(--grey-1);
+      letter-spacing: 0.04em;
+    }
+    .kpi .split span { display: inline-flex; align-items: baseline; gap: 4px; }
+    .kpi .split .tag {
+      font-size: 9px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.16em;
+    }
+    .kpi .split strong { color: var(--white); font-weight: 500; font-size: 13px; }
 
     /* Charts */
     .charts-grid {
@@ -631,11 +642,13 @@
         <div class="kpi">
           <div class="label">Avg time to<br>1st delivery (SLA)</div>
           <div class="value" id="kpiDesignFirst">—</div>
+          <div class="split" id="kpiDesignFirstSplit"></div>
           <div class="sub">creation → first DONE, business hours</div>
         </div>
         <div class="kpi">
           <div class="label">Avg total<br>design effort</div>
           <div class="value" id="kpiDesignLast">—</div>
+          <div class="split" id="kpiDesignLastSplit"></div>
           <div class="sub">incl. rework after corrections</div>
         </div>
         <div class="kpi">
@@ -786,7 +799,7 @@
   const CONFIG = {
     PASSWORD: "SDS2026",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    CACHE_KEY: "sds-dashboard-v9",
+    CACHE_KEY: "sds-dashboard-v10",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
     REGIONS: {
@@ -794,7 +807,7 @@
       latam: ["BR", "MX", "ROLA", "AND"],
       na:    ["US", "CA"],
     },
-    MIN_DATE: "2026-04-01",
+    MIN_DATE: "2026-01-01",
   };
   const IS_ADMIN = /\/admin\/?$/i.test(window.location.pathname) || window.location.search.includes("admin=1");
 
@@ -971,6 +984,12 @@
       ? `${k.first_time_pct}<span class="unit">%</span>` : "—";
     $("kpiWaiting").innerHTML = (k.avg_waiting_min != null) ? fmtMin(k.avg_waiting_min) : "—";
     $("kpiInProgress").textContent = (k.in_progress || 0).toLocaleString();
+
+    const splitHTML = (camp, prop) => `
+      <span><span class="tag">CAMP</span><strong>${camp != null ? fmtHours(camp) + "h" : "—"}</strong></span>
+      <span><span class="tag">PROP</span><strong>${prop != null ? fmtHours(prop) + "h" : "—"}</strong></span>`;
+    $("kpiDesignFirstSplit").innerHTML = splitHTML(k.avg_design_first_camp_min, k.avg_design_first_prop_min);
+    $("kpiDesignLastSplit").innerHTML  = splitHTML(k.avg_design_last_camp_min,  k.avg_design_last_prop_min);
   }
 
   function makeChart(canvasId, config) {
