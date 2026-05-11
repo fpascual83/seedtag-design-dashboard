@@ -363,6 +363,11 @@
     .sla-period .sla-targets strong {
       color: var(--coral); font-weight: 500;
     }
+    .sla-period .bh {
+      font-size: 9px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.14em;
+      margin-left: 2px;
+    }
 
     /* KPIs */
     .kpi-grid {
@@ -396,6 +401,11 @@
       font-size: 38px; font-weight: 500; line-height: 1; letter-spacing: -0.01em;
     }
     .kpi .unit { font-size: 14px; color: var(--grey-3); margin-left: 4px; font-weight: 400; }
+    .kpi .biz {
+      font-size: 9px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.18em;
+      margin-left: 4px; vertical-align: middle;
+    }
     .kpi .sub { font-size: 12px; color: var(--grey-3); margin-top: 8px; }
     .kpi .split {
       display: flex; gap: 14px; margin-top: 6px;
@@ -439,6 +449,11 @@
     .chart-card.dark .chart-sub { color: var(--grey-3); }
     .chart-wrap { position: relative; height: 280px; }
     .chart-wrap.donut { height: 260px; }
+    /* Horizontal bars with many categories need more vertical room
+       so every Y-axis label fits without auto-skipping. */
+    #chartByRep, #chartByOperator { min-height: 360px; }
+    .chart-card:has(#chartByRep) .chart-wrap,
+    .chart-card:has(#chartByOperator) .chart-wrap { height: 380px; }
     .chart-empty {
       display: flex; align-items: center; justify-content: center;
       height: 100%;
@@ -674,19 +689,19 @@
 
       <!-- SLA timeline: compact clickable period strip -->
       <div class="sla-timeline" id="slaTimeline">
-        <div class="sla-legend">SLA · <span>CAMP w/ specs</span> / <span>rest</span> · click to filter</div>
+        <div class="sla-legend">SLA · <span>CAMP w/ specs</span> / <span>rest</span> · business hours per operator entity · click to filter, click again to clear</div>
         <div class="sla-row">
           <button class="sla-period" data-from="2026-01-01" data-to="2026-03-31">
             <span class="sla-range">1 Jan → 1 Apr</span>
-            <span class="sla-targets"><strong>8h</strong> / <strong>16h</strong></span>
+            <span class="sla-targets"><strong>8h</strong><span class="bh">biz</span> / <strong>16h</strong><span class="bh">biz</span></span>
           </button>
           <button class="sla-period" data-from="2026-04-01" data-to="2026-05-10">
             <span class="sla-range">1 Apr → 11 May</span>
-            <span class="sla-targets"><strong>16h</strong> / <strong>24h</strong></span>
+            <span class="sla-targets"><strong>16h</strong><span class="bh">biz</span> / <strong>24h</strong><span class="bh">biz</span></span>
           </button>
           <button class="sla-period" data-from="2026-05-11" data-to="">
             <span class="sla-range">11 May → today</span>
-            <span class="sla-targets"><strong>8h</strong> / <strong>16h</strong></span>
+            <span class="sla-targets"><strong>8h</strong><span class="bh">biz</span> / <strong>16h</strong><span class="bh">biz</span></span>
           </button>
         </div>
       </div>
@@ -893,7 +908,7 @@
   const CONFIG = {
     PASSWORD: "SDS2026",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
-    CACHE_KEY: "sds-dashboard-v13",
+    CACHE_KEY: "sds-dashboard-v15",
     CACHE_TTL_MIN: 5,
     EMEA_MARKETS: ["ES", "FR", "BNL", "DE", "IT", "UK", "MENA"],
     REGIONS: {
@@ -1067,24 +1082,34 @@
   }
 
   /* ===================== RENDER ===================== */
+  // Short label of the active operator entity scope — shown next to "biz".
+  // Helps make it explicit that the hours respect each market's calendar.
+  function operatorTagLabel() {
+    const picked = STATE.filters?.market || [];
+    if (!picked.length) return "per operator entity";
+    if (picked.length === 1) return picked[0] + " calendar";
+    return picked.length + " calendars";
+  }
+
   function renderKPIs(d) {
     const k = d.kpis || {};
     $("kpiDelivered").textContent = (k.tickets_delivered || 0).toLocaleString();
     $("kpiDesignFirst").innerHTML = (k.avg_design_first_min != null)
-      ? `${fmtHours(k.avg_design_first_min)}<span class="unit">h</span>` : "—";
+      ? `${fmtHours(k.avg_design_first_min)}<span class="unit">h</span><span class="biz">biz · ${operatorTagLabel()}</span>` : "—";
     $("kpiDesignLast").innerHTML = (k.avg_design_last_min != null)
-      ? `${fmtHours(k.avg_design_last_min)}<span class="unit">h</span>` : "—";
+      ? `${fmtHours(k.avg_design_last_min)}<span class="unit">h</span><span class="biz">biz · ${operatorTagLabel()}</span>` : "—";
     $("kpiFirstTime").innerHTML = (k.first_time_pct != null)
       ? `${k.first_time_pct}<span class="unit">%</span>` : "—";
-    $("kpiWaiting").innerHTML = (k.avg_waiting_min != null) ? fmtMin(k.avg_waiting_min) : "—";
+    $("kpiWaiting").innerHTML = (k.avg_waiting_min != null)
+      ? `${fmtMin(k.avg_waiting_min)} <span class="biz">biz · ${operatorTagLabel()}</span>` : "—";
     $("kpiInProgress").textContent = (k.in_progress || 0).toLocaleString();
     $("kpiInProgressSplit").innerHTML = `
       <span><span class="tag">ACTIVE</span><strong>${k.in_progress_active ?? 0}</strong></span>
       <span><span class="tag">WAITING</span><strong>${k.in_progress_waiting ?? 0}</strong></span>`;
 
     const splitHTML = (camp, prop) => `
-      <span><span class="tag">CAMP</span><strong>${camp != null ? fmtHours(camp) + "h" : "—"}</strong></span>
-      <span><span class="tag">PROP</span><strong>${prop != null ? fmtHours(prop) + "h" : "—"}</strong></span>`;
+      <span><span class="tag">CAMP</span><strong>${camp != null ? fmtHours(camp) + "h biz" : "—"}</strong></span>
+      <span><span class="tag">PROP</span><strong>${prop != null ? fmtHours(prop) + "h biz" : "—"}</strong></span>`;
     $("kpiDesignFirstSplit").innerHTML = splitHTML(k.avg_design_first_camp_min, k.avg_design_first_prop_min);
     $("kpiDesignLastSplit").innerHTML  = splitHTML(k.avg_design_last_camp_min,  k.avg_design_last_prop_min);
   }
@@ -1147,11 +1172,20 @@
   function tickLabel(metric) {
     return metric === "time" ? (v => `${Math.round(v/60)}h`) : (v => v);
   }
-  function tooltipLabel(metric) {
+  // Tooltip: always show segment %, plus the raw number (h for time, count for volume).
+  // Works for both vertical and horizontal bars (axis-aware).
+  function tooltipLabel(metric, mode) {
     return (ctx) => {
-      const v = ctx.parsed.y ?? ctx.parsed.x ?? ctx.parsed;
-      const out = metric === "time" ? `${(v/60).toFixed(1)}h` : v;
-      return `${ctx.dataset.label}: ${out}`;
+      const axis = ctx.chart.options.indexAxis === "y" ? "x" : "y";
+      const v = ctx.parsed[axis] ?? 0;
+      const total = ctx.chart.data.datasets.reduce(
+        (s, ds) => s + (Number(ds.data[ctx.dataIndex]) || 0), 0);
+      const raw = metric === "time" ? `${(v/60).toFixed(1)}h` : v;
+      if (mode === "total" || total === 0) {
+        return `${ctx.dataset.label}: ${raw}`;
+      }
+      const pct = Math.round(v / total * 100);
+      return `${ctx.dataset.label}: ${pct}% · ${raw}`;
     };
   }
 
@@ -1166,10 +1200,10 @@
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { display: stacked, position: "bottom", labels: { color: COLOR.white, padding: 12, boxWidth: 10, font: { size: 11 } } },
-          tooltip: { callbacks: { label: tooltipLabel(metric) } },
+          tooltip: { callbacks: { label: tooltipLabel(metric, mode) } },
         },
         scales: {
-          x: { stacked, grid: { display: false }, ticks: { color: COLOR.grey3 } },
+          x: { stacked, grid: { display: false }, ticks: { color: COLOR.grey3, autoSkip: false } },
           y: { stacked, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0, callback: tickLabel(metric) } },
         },
       },
@@ -1188,11 +1222,11 @@
         indexAxis: "y", responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { display: stacked, position: "bottom", labels: { color: COLOR.white, padding: 12, boxWidth: 10, font: { size: 11 } } },
-          tooltip: { callbacks: { label: tooltipLabel(metric) } },
+          tooltip: { callbacks: { label: tooltipLabel(metric, mode) } },
         },
         scales: {
           x: { stacked, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0, callback: tickLabel(metric) } },
-          y: { stacked, grid: { display: false }, ticks: { color: COLOR.grey3, font: { size: 11 } } },
+          y: { stacked, grid: { display: false }, ticks: { color: COLOR.grey3, font: { size: 11 }, autoSkip: false } },
         },
       },
     });
@@ -1509,15 +1543,20 @@
   function wireUp() {
     $("btnRefresh").addEventListener("click", () => loadAndRender(true));
 
-    // SLA timeline: clicking a period sets the From/To and reloads.
+    // SLA timeline: click to set the range; click the same active card again to clear.
     document.querySelectorAll(".sla-period").forEach(btn => {
       btn.addEventListener("click", () => {
-        const from = btn.dataset.from || "";
-        const to   = btn.dataset.to   || isoDay(new Date());
-        $("filterFrom").value = from;
-        $("filterTo").value   = to;
-        document.querySelectorAll(".sla-period").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
+        if (btn.classList.contains("active")) {
+          // toggle off → restore the full default range
+          $("filterFrom").value = CONFIG.MIN_DATE;
+          $("filterTo").value   = isoDay(new Date());
+          document.querySelectorAll(".sla-period").forEach(b => b.classList.remove("active"));
+        } else {
+          $("filterFrom").value = btn.dataset.from || "";
+          $("filterTo").value   = btn.dataset.to   || isoDay(new Date());
+          document.querySelectorAll(".sla-period").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+        }
         scheduleReload();
       });
     });
