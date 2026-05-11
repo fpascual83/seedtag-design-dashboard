@@ -1817,6 +1817,10 @@
     try {
       const r = await apiGet("/api/admin/edits");
       STATE.edits = r.edits || {};
+      // Default any row with an edit to "show edited" — admin can still toggle back to original.
+      for (const k of Object.keys(STATE.edits)) {
+        if (STATE.showEdited[k] === undefined) STATE.showEdited[k] = true;
+      }
     } catch (e) { console.warn("loadEdits failed", e); }
   }
 
