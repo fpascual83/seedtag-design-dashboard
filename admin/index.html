@@ -1,4 +1,4 @@
-——<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -269,14 +269,11 @@
 
     /* Admin badge + edit switch */
     /* Show / hide sections based on body mode set in JS */
-    .admin-only,
-    .charts-grid.admin-only,
-    .filter.admin-only,
-    .section-marker.admin-only { display: none !important; }
-    body.admin-mode .admin-only            { display: revert !important; }
-    body.admin-mode .charts-grid.admin-only{ display: grid  !important; }
-    body.admin-mode .filter.admin-only     { display: flex  !important; }
-    body.admin-mode .public-only           { display: none  !important; }
+    .admin-only { display: none; }
+    body.admin-mode .admin-only { display: ""; }
+    body.admin-mode .charts-grid.admin-only { display: grid; }
+    body.admin-mode .public-only { display: none; }
+    body.admin-mode .filter.admin-only { display: flex; }
 
     .admin-badge {
       display: inline-block; margin-left: 12px;
@@ -464,6 +461,13 @@
     #chartByRep, #chartByOperator { min-height: 360px; }
     .chart-card:has(#chartByRep) .chart-wrap,
     .chart-card:has(#chartByOperator) .chart-wrap { height: 380px; }
+    .industry-picker {
+      background: transparent; color: var(--coral); border: 1px solid var(--coral);
+      border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 600;
+      cursor: pointer; margin-left: 8px;
+    }
+    .industry-picker:focus { outline: none; }
+    .chart-card:has(#chartDeliveryByMarket) .chart-wrap { height: 380px; }
     .chart-empty {
       display: flex; align-items: center; justify-content: center;
       height: 100%;
@@ -830,6 +834,22 @@
           <div class="chart-wrap"><canvas id="chartByRep"></canvas></div>
         </div>
 
+        <!-- Industry × Month (CAMP + PROP stacked), with industry switch -->
+        <div class="chart-card dark">
+          <h3>By Industry
+            <select id="industryPicker" class="industry-picker"></select>
+          </h3>
+          <div class="chart-sub" id="industrySub">monthly volume · CAMP + PROP stacked</div>
+          <div class="chart-wrap"><canvas id="chartIndustry"></canvas></div>
+        </div>
+
+        <!-- Delivery type % per operator entity (Direct vs PMP) -->
+        <div class="chart-card dark">
+          <h3>Delivery Type · Direct vs PMP</h3>
+          <div class="chart-sub">% of tickets per operator entity</div>
+          <div class="chart-wrap"><canvas id="chartDeliveryByMarket"></canvas></div>
+        </div>
+
       </div>
 
       <!-- Admin-only charts: assigned-by-week/month, Quality, Best Practices -->
@@ -1081,6 +1101,7 @@
     },
     edits: {},
     showEdited: {},
+    industryPick: null,    // selected industry for the public "By Industry" chart
     initialLoad: true,     // suppress fullscreen loader after first load
     refreshTimer: null,
   };
@@ -1306,17 +1327,108 @@
   function renderCharts(d) {
     Chart.defaults.font.family = "'Instrument Sans', sans-serif";
     const s = d.scoped || {};
+    // Defensive: every chart receives an array regardless of what the API ships.
+    const arr = (v) => Array.isArray(v) ? v : [];
     if (IS_ADMIN) {
-      renderAdminBar("chartWeekAdm",  s.weekly_assigned  || [], "week",  STATE.chartModes.weekAdm);
-      renderAdminBar("chartMonthAdm", s.monthly_assigned || [], "month", STATE.chartModes.monthAdm);
-      renderDistribution("chartQuality", s.quality_dist || [], "value", "Quality");
-      renderDistribution("chartToFix",   s.to_fix_dist  || [], "bucket", "Tickets");
+      renderAdminBar("chartWeekAdm",  arr(s.weekly_assigned),  "week",  STATE.chartModes.weekAdm);
+      renderAdminBar("chartMonthAdm", arr(s.monthly_assigned), "month", STATE.chartModes.monthAdm);
+      renderDistribution("chartQuality", arr(s.quality_dist), "value", "Quality");
+      renderDistribution("chartToFix",   arr(s.to_fix_dist),  "bucket", "Tickets");
     } else {
-      renderVerticalBars("chartWeekday",    s.weekday_created || [], "day",    STATE.chartModes.weekday);
-      renderVerticalBars("chartMonthly",    s.monthly_created || [], "month",  STATE.chartModes.month);
-      renderHorizontalBars("chartByOperator", s.by_operator   || [], "market", STATE.chartModes.operator, 20);
-      renderHorizontalBars("chartByRep",      s.by_sales_rep  || [], "rep",    STATE.chartModes.rep, 15);
+      renderVerticalBars("chartWeekday",    arr(s.weekday_created), "day",    STATE.chartModes.weekday);
+      renderVerticalBars("chartMonthly",    arr(s.monthly_created), "month",  STATE.chartModes.month);
+      renderHorizontalBars("chartByOperator", arr(s.by_operator),   "market", STATE.chartModes.operator, 20);
+      renderHorizontalBars("chartByRep",      arr(s.by_sales_rep),  "rep",    STATE.chartModes.rep, 15);
+      renderIndustry("chartIndustry", s.monthly_by_industry || {industries: [], months: [], data: {}});
+      renderDeliveryByMarket("chartDeliveryByMarket", arr(s.delivery_by_market));
     }
+  }
+
+  /* Industry × Month chart with a single-industry switch.
+     Selected industry persists in STATE.industryPick (or localStorage). */
+  function renderIndustry(canvasId, payload) {
+    const industries = (payload.industries || []).filter(x => x !== "(unset)");
+    const months     = payload.months || [];
+    const data       = payload.data   || {};
+    const picker = document.getElementById("industryPicker");
+    if (picker) {
+      const prev = STATE.industryPick || localStorage.getItem("sds_industry") || industries[0];
+      const want = industries.includes(prev) ? prev : (industries[0] || "");
+      if (picker.dataset.options !== industries.join("|")) {
+        picker.innerHTML = industries.map(i => `<option value="${escapeHtml(i)}"${i===want?" selected":""}>${escapeHtml(i)}</option>`).join("");
+        picker.dataset.options = industries.join("|");
+        picker.onchange = () => {
+          STATE.industryPick = picker.value;
+          try { localStorage.setItem("sds_industry", picker.value); } catch (_) {}
+          renderIndustry(canvasId, payload);
+        };
+      } else {
+        picker.value = want;
+      }
+      STATE.industryPick = want;
+    }
+    const chosen = STATE.industryPick || industries[0];
+    const sub    = document.getElementById("industrySub");
+    const bucketFor = (m) => (data[chosen] && data[chosen][m]) || { camp:0, prop:0, other:0, total:0 };
+    const totalAll = months.reduce((a,m) => a + bucketFor(m).total, 0);
+    if (sub) sub.textContent = chosen
+      ? `${chosen} · ${totalAll} tickets across ${months.length} month${months.length===1?"":"s"} · CAMP + PROP stacked`
+      : "no industry data";
+    makeChart(canvasId, {
+      type: "bar",
+      data: {
+        labels: months,
+        datasets: [
+          { label: "Campaigns",  data: months.map(m => bucketFor(m).camp),  backgroundColor: COLOR.coral, stack: "k", borderWidth: 0 },
+          { label: "Proposals",  data: months.map(m => bucketFor(m).prop),  backgroundColor: "#FFFFFF",   stack: "k", borderWidth: 0 },
+          { label: "Other",      data: months.map(m => bucketFor(m).other), backgroundColor: COLOR.grey3, stack: "k", borderWidth: 0 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: COLOR.grey3, font: { size: 11 } } },
+          tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}` } },
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false }, ticks: { color: COLOR.grey3, autoSkip: false } },
+          y: { stacked: true, beginAtZero: true, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, precision: 0 } },
+        },
+      },
+    });
+  }
+
+  /* Delivery type per market: horizontal 100% stacked bars (Direct / PMP / Other). */
+  function renderDeliveryByMarket(canvasId, rows) {
+    const labels = rows.map(r => r.market);
+    makeChart(canvasId, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          { label: "Direct", data: rows.map(r => r.direct_pct || 0), backgroundColor: COLOR.coral, stack: "p", borderWidth: 0 },
+          { label: "PMP",    data: rows.map(r => r.pmp_pct    || 0), backgroundColor: "#FFFFFF",   stack: "p", borderWidth: 0 },
+          { label: "Other",  data: rows.map(r => r.other_pct  || 0), backgroundColor: COLOR.grey3, stack: "p", borderWidth: 0 },
+        ],
+      },
+      options: {
+        indexAxis: "y", responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: COLOR.grey3, font: { size: 11 } } },
+          tooltip: { callbacks: { label: ctx => {
+            const r = rows[ctx.dataIndex] || {};
+            const lbl = ctx.dataset.label;
+            const pct = ctx.parsed.x;
+            const n   = (lbl === "Direct" ? r.direct : lbl === "PMP" ? r.pmp : r.other) || 0;
+            return `${lbl}: ${pct}% · ${n} of ${r.total || 0}`;
+          }}},
+        },
+        scales: {
+          x: { stacked: true, min: 0, max: 100, grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: COLOR.grey3, callback: v => `${v}%` } },
+          y: { stacked: true, grid: { display: false }, ticks: { color: COLOR.grey3, font: { size: 11 }, autoSkip: false } },
+        },
+      },
+    });
   }
 
   /* Admin: weekly/monthly assigned with Volume/Time/Formats switch. */
@@ -1808,6 +1920,7 @@
       const sub = document.querySelector("header .subtitle");
       if (sub) sub.innerHTML += `<span class="admin-badge">Admin · editable</span>`;
     }
+    // Restore saved toggle state for this browser before fetching edits.
     try { const raw = localStorage.getItem("sds_show_edited"); if (raw) Object.assign(STATE.showEdited, JSON.parse(raw)); } catch (_) {}
     // Always load edit overrides — public dashboard shows corrected values.
     await loadEdits();
@@ -1819,7 +1932,7 @@
     try {
       const r = await apiGet("/api/admin/edits");
       STATE.edits = r.edits || {};
-      // Default any row with an edit to show edited.
+      // Default any row with an edit to "show edited" — admin can still toggle back to original.
       for (const k of Object.keys(STATE.edits)) {
         if (STATE.showEdited[k] === undefined) STATE.showEdited[k] = true;
       }
