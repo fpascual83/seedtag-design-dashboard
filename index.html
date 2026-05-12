@@ -1402,18 +1402,26 @@
     });
   }
 
-  /* Delivery type per market: horizontal 100% stacked bars (Direct / PMP / Other). */
+  /* Delivery type per market: horizontal 100% stacked bars.
+     Real Jira values: Direct / PMP / Both / Pending Definition. */
   function renderDeliveryByMarket(canvasId, rows) {
     const labels = rows.map(r => r.market);
+    const series = [
+      { label: "Direct",            key: "direct",  pct: "direct_pct",  color: COLOR.coral },
+      { label: "PMP",               key: "pmp",     pct: "pmp_pct",     color: "#FFFFFF"   },
+      { label: "Both",              key: "both",    pct: "both_pct",    color: "#8DBEB6"   },
+      { label: "Pending Definition", key: "pending", pct: "pending_pct", color: COLOR.grey3 },
+      { label: "Other",             key: "other",   pct: "other_pct",   color: "#5E5C5B"   },
+    ];
     makeChart(canvasId, {
       type: "bar",
       data: {
         labels,
-        datasets: [
-          { label: "Direct", data: rows.map(r => r.direct_pct || 0), backgroundColor: COLOR.coral, stack: "p", borderWidth: 0 },
-          { label: "PMP",    data: rows.map(r => r.pmp_pct    || 0), backgroundColor: "#FFFFFF",   stack: "p", borderWidth: 0 },
-          { label: "Other",  data: rows.map(r => r.other_pct  || 0), backgroundColor: COLOR.grey3, stack: "p", borderWidth: 0 },
-        ],
+        datasets: series.map(s => ({
+          label: s.label,
+          data: rows.map(r => r[s.pct] || 0),
+          backgroundColor: s.color, stack: "p", borderWidth: 0,
+        })),
       },
       options: {
         indexAxis: "y", responsive: true, maintainAspectRatio: false,
@@ -1421,10 +1429,9 @@
           legend: { labels: { color: COLOR.grey3, font: { size: 11 } } },
           tooltip: { callbacks: { label: ctx => {
             const r = rows[ctx.dataIndex] || {};
-            const lbl = ctx.dataset.label;
-            const pct = ctx.parsed.x;
-            const n   = (lbl === "Direct" ? r.direct : lbl === "PMP" ? r.pmp : r.other) || 0;
-            return `${lbl}: ${pct}% · ${n} of ${r.total || 0}`;
+            const s = series[ctx.datasetIndex] || {};
+            const n = r[s.key] || 0;
+            return `${s.label}: ${ctx.parsed.x}% · ${n} of ${r.total || 0}`;
           }}},
         },
         scales: {
