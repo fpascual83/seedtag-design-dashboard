@@ -547,38 +547,28 @@
       background: #0d0d0d;
       padding: 18px 22px;
     }
-    tr.detail .timeline {
-      display: flex; flex-direction: column; gap: 4px;
-      max-height: 320px; overflow-y: auto;
+    /* Segment sub-rows that expand below a ticket row.
+       They share the parent <table> column layout so values align with main columns. */
+    tr.segment > td {
+      background: #0d0d0d; border-top: 1px dashed #1f1f1f; border-bottom: 0;
+      padding: 5px 12px; font-size: 12px; color: var(--grey-2);
     }
-    tr.detail .timeline-row {
-      display: grid; grid-template-columns: 170px 1fr 110px 110px 110px;
-      gap: 10px; padding: 6px 0; font-size: 12px;
-      color: var(--grey-1);
-      border-bottom: 1px solid #161616;
-      align-items: center;
-    }
-    tr.detail .timeline-row:last-child { border-bottom: 0; }
-    tr.detail .timeline-row .ts { color: var(--grey-3); }
-    tr.detail .timeline-row .status-pill {
+    tr.segment.first > td { padding-top: 10px; }
+    tr.segment.last  > td { padding-bottom: 10px; border-bottom: 1px solid #161616; }
+    tr.segment td.seg-marker { color: var(--grey-3); font-size: 11px; text-align: right; padding-right: 8px; }
+    tr.segment td.seg-status-text { color: var(--grey-2); white-space: nowrap; }
+    tr.segment .status-pill {
       display: inline-block; padding: 2px 8px; border-radius: 999px;
       background: rgba(255,107,124,0.10); color: var(--coral);
-      font-size: 11px; font-weight: 600;
+      font-size: 11px; font-weight: 600; white-space: nowrap;
     }
-    tr.detail .timeline-row .status-pill.waiting { background: rgba(141,138,137,0.18); color: var(--grey-2); }
-    tr.detail .timeline-row .status-pill.done    { background: rgba(141,190,182,0.18); color: #8DBEB6; }
-    tr.detail .timeline-row .bm-cell {
-      font-variant-numeric: tabular-nums; text-align: right; color: var(--grey-3);
+    tr.segment .status-pill.waiting { background: rgba(141,138,137,0.18); color: var(--grey-2); }
+    tr.segment .status-pill.done    { background: rgba(141,190,182,0.18); color: #8DBEB6; }
+    tr.segment td.seg-bm {
+      font-variant-numeric: tabular-nums; color: var(--grey-3); white-space: nowrap;
     }
-    tr.detail .timeline-row .bm-cell strong { color: var(--grey-1); }
-    tr.detail .timeline-row .bm-cell.contributes strong { color: var(--coral); }
-    tr.detail .timeline-head {
-      display: grid; grid-template-columns: 170px 1fr 110px 110px 110px;
-      gap: 10px; padding-bottom: 6px; font-size: 10px;
-      color: var(--grey-3); text-transform: uppercase; letter-spacing: 0.08em;
-      border-bottom: 1px solid #2f2f2f;
-    }
-    tr.detail .timeline-head .right { text-align: right; }
+    tr.segment td.seg-bm.contributes { color: var(--coral); font-weight: 500; }
+    tr.segment td.seg-loading { color: var(--grey-3); }
 
     /* Loader */
     #loader {
@@ -1665,73 +1655,119 @@
 
   function bindRowExpansion() {
     const tbody = document.querySelector("#ticketsTable tbody");
+    const totalCols = () => IS_ADMIN ? 12 : 11;
+
+    const removeSegments = (anchorTr) => {
+      let n = anchorTr.nextElementSibling;
+      while (n && n.classList.contains("segment")) {
+        const next = n.nextElementSibling;
+        n.remove();
+        n = next;
+      }
+    };
+
+    const buildSegmentRow = ({ marker, dateText, statusEl, bm1, bm2, bm3, klass }) => {
+      const tr = document.createElement("tr");
+      tr.className = "segment" + (klass ? " " + klass : "");
+      tr.innerHTML = `
+        <td class="seg-marker">${marker || ""}</td>
+        <td class="seg-status-text">${statusEl}</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td>${dateText}</td>
+        <td class="seg-bm ${bm1.cls}">${bm1.text}</td>
+        <td class="seg-bm ${bm2.cls}">${bm2.text}</td>
+        <td class="seg-bm ${bm3.cls}">${bm3.text}</td>
+        <td></td>
+        <td></td>` + (IS_ADMIN ? `<td></td>` : ``);
+      return tr;
+    };
+
+    const fmtBm = (m) => {
+      if (!m) return "—";
+      if (m < 60) return `${Math.round(m)}m`;
+      const h = Math.floor(m / 60); const r = Math.round(m % 60);
+      return r ? `${h}h ${r}m` : `${h}h`;
+    };
+    const pillFor = (s) => {
+      const x = (s || "").toLowerCase().trim();
+      const cls = x === "waiting for customer" ? "status-pill waiting"
+                : x === "done" ? "status-pill done"
+                : "status-pill";
+      return `<span class="${cls}">${escapeHtml(s || "—")}</span>`;
+    };
+
     tbody.addEventListener("click", async (e) => {
       const tr = e.target.closest("tr.row");
       if (!tr) return;
       if (e.target.closest("a")) return;
       const key = tr.dataset.key;
       const next = tr.nextElementSibling;
-      if (next && next.classList.contains("detail")) { next.remove(); return; }
+      if (next && next.classList.contains("segment")) { removeSegments(tr); return; }
 
-      const detail = document.createElement("tr");
-      detail.className = "detail";
-      const cell = document.createElement("td");
-      cell.colSpan = IS_ADMIN ? 12 : 11;
-      cell.innerHTML = `<div class="timeline"><div style="color:var(--grey-3);font-size:12px;">Loading timeline…</div></div>`;
-      detail.appendChild(cell);
-      tr.after(detail);
+      const loadingTr = document.createElement("tr");
+      loadingTr.className = "segment first last";
+      const td = document.createElement("td");
+      td.colSpan = totalCols();
+      td.className = "seg-loading";
+      td.textContent = "Loading timeline…";
+      loadingTr.appendChild(td);
+      tr.after(loadingTr);
 
       try {
         const { segments, transitions } = await fetchIssue(key);
+        removeSegments(tr);
+
         const list = (segments && segments.length) ? segments : null;
+        const insertAfter = (node) => tr.parentNode.insertBefore(node, tr.nextSibling);
+
         if (!list) {
           if (!transitions || !transitions.length) {
-            cell.innerHTML = `<div class="timeline"><div style="color:var(--grey-3);font-size:12px;">No status transitions recorded.</div></div>`;
+            const empty = document.createElement("tr");
+            empty.className = "segment first last";
+            const t = document.createElement("td");
+            t.colSpan = totalCols();
+            t.className = "seg-loading";
+            t.textContent = "No status transitions recorded.";
+            empty.appendChild(t);
+            tr.after(empty);
             return;
           }
-          cell.innerHTML = `<div class="timeline">` + transitions.map(t => `
-            <div class="timeline-row">
-              <span class="ts">${new Date(t.at).toLocaleString()}</span>
-              <span class="status-pill">${escapeHtml(t.to_status || "—")}</span>
-              <span></span><span></span><span></span>
-            </div>`).join("") + `</div>`;
+          const rows = transitions.map((tx, i) => buildSegmentRow({
+            marker: i === 0 ? "↳" : "",
+            dateText: new Date(tx.at).toLocaleString(),
+            statusEl: pillFor(tx.to_status),
+            bm1: { text: "—", cls: "" },
+            bm2: { text: "—", cls: "" },
+            bm3: { text: "—", cls: "" },
+            klass: (i === 0 ? "first" : "") + (i === transitions.length - 1 ? " last" : ""),
+          }));
+          rows.reverse().forEach(insertAfter);
           return;
         }
-        const fmtBm = (m) => {
-          if (!m) return "—";
-          if (m < 60) return `${Math.round(m)}m`;
-          const h = Math.floor(m / 60); const r = Math.round(m % 60);
-          return r ? `${h}h ${r}m` : `${h}h`;
-        };
-        const pillClass = (s) => {
-          const x = (s || "").toLowerCase().trim();
-          if (x === "waiting for customer") return "status-pill waiting";
-          if (x === "done") return "status-pill done";
-          return "status-pill";
-        };
-        cell.innerHTML = `
-          <div class="timeline">
-            <div class="timeline-head">
-              <span>Date (entered)</span>
-              <span>Status</span>
-              <span class="right">1st delivery</span>
-              <span class="right">Total effort</span>
-              <span class="right">Customer effort</span>
-            </div>
-          ` + list.map(s => {
-            const cls1 = s.bmFirstDelivery  > 0 ? "contributes" : "";
-            const cls2 = s.bmTotalEffort    > 0 ? "contributes" : "";
-            const cls3 = s.bmCustomerEffort > 0 ? "contributes" : "";
-            return `<div class="timeline-row">
-              <span class="ts">${new Date(s.start).toLocaleString()}</span>
-              <span><span class="${pillClass(s.status)}">${escapeHtml(s.status || "—")}</span></span>
-              <span class="bm-cell ${cls1}"><strong>${fmtBm(s.bmFirstDelivery)}</strong></span>
-              <span class="bm-cell ${cls2}"><strong>${fmtBm(s.bmTotalEffort)}</strong></span>
-              <span class="bm-cell ${cls3}"><strong>${fmtBm(s.bmCustomerEffort)}</strong></span>
-            </div>`;
-          }).join("") + `</div>`;
+
+        const rows = list.map((s, i) => buildSegmentRow({
+          marker: i === 0 ? "↳" : "",
+          dateText: new Date(s.start).toLocaleString(),
+          statusEl: pillFor(s.status),
+          bm1: { text: fmtBm(s.bmFirstDelivery),  cls: s.bmFirstDelivery  > 0 ? "contributes" : "" },
+          bm2: { text: fmtBm(s.bmTotalEffort),    cls: s.bmTotalEffort    > 0 ? "contributes" : "" },
+          bm3: { text: fmtBm(s.bmCustomerEffort), cls: s.bmCustomerEffort > 0 ? "contributes" : "" },
+          klass: (i === 0 ? "first" : "") + (i === list.length - 1 ? " last" : ""),
+        }));
+        rows.reverse().forEach(insertAfter);
       } catch (err) {
-        cell.innerHTML = `<div class="timeline"><div style="color:var(--coral);font-size:12px;">Could not load timeline: ${escapeHtml(err.message)}</div></div>`;
+        removeSegments(tr);
+        const errTr = document.createElement("tr");
+        errTr.className = "segment first last";
+        const t = document.createElement("td");
+        t.colSpan = totalCols();
+        t.className = "seg-loading";
+        t.style.color = "var(--coral)";
+        t.textContent = "Could not load timeline: " + err.message;
+        errTr.appendChild(t);
+        tr.after(errTr);
       }
     });
   }
