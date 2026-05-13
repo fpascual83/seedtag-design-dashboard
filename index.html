@@ -775,6 +775,12 @@
           <div class="split" id="kpiInProgressSplit"></div>
           <div class="sub">active in Design + waiting customer</div>
         </div>
+        <div class="kpi">
+          <div class="label">SLA compliance</div>
+          <div class="value" id="kpiSlaCompliance">—<span class="unit">%</span></div>
+          <div class="split" id="kpiSlaComplianceSplit"></div>
+          <div class="sub">delivered within target time</div>
+        </div>
       </div>
 
       <!-- Charts (public view) -->
@@ -1201,6 +1207,17 @@
     $("kpiInProgressSplit").innerHTML = `
       <span><span class="tag">ACTIVE</span><strong>${k.in_progress_active ?? 0}</strong></span>
       <span><span class="tag">WAITING</span><strong>${k.in_progress_waiting ?? 0}</strong></span>`;
+
+    // SLA compliance — overall + split by fast (CAMP w/ Sent specs) and slow (everything else)
+    $("kpiSlaCompliance").innerHTML = (k.sla_compliance_pct != null)
+      ? `${k.sla_compliance_pct}<span class="unit">%</span>` : "—";
+    const fastLbl = (k.sla_compliance_fast_pct != null)
+      ? `${k.sla_compliance_fast_pct}% · ${k.sla_fast_n || 0}` : "—";
+    const slowLbl = (k.sla_compliance_slow_pct != null)
+      ? `${k.sla_compliance_slow_pct}% · ${k.sla_slow_n || 0}` : "—";
+    $("kpiSlaComplianceSplit").innerHTML = `
+      <span><span class="tag">FAST</span><strong>${fastLbl}</strong></span>
+      <span><span class="tag">SLOW</span><strong>${slowLbl}</strong></span>`;
 
     const splitHTML = (camp, prop) => `
       <span><span class="tag">CAMP</span><strong>${camp != null ? fmtHours(camp) + "h biz" : "—"}</strong></span>
