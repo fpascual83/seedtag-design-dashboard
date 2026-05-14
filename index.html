@@ -737,7 +737,7 @@
 
       <!-- SLA timeline: compact clickable period strip -->
       <div class="sla-timeline" id="slaTimeline">
-        <div class="sla-legend">SLA · <span>CAMP w/ specs</span> / <span>rest</span> · business hours per operator entity · click to filter, click again to clear</div>
+        <div class="sla-legend">SLA · <span>CAMP w/ specs</span> / <span>everything else</span> · business hours per operator entity · click to filter, click again to clear</div>
         <div class="sla-row">
           <button class="sla-period" data-from="2026-01-01" data-to="2026-03-31">
             <span class="sla-range">1 Jan → 1 Apr</span>
@@ -1219,14 +1219,17 @@
       if (exTotal > 0) {
         const ns = k.excluded_no_specs_count || 0;
         const kw = k.excluded_keyword_count || 0;
+        const fl = k.excluded_flag_count || 0;
         const parts = [];
         if (ns) parts.push(`${ns} no specs`);
         if (kw) parts.push(`${kw} special products`);
+        if (fl) parts.push(`${fl} flagged`);
         exNote.style.display = "inline-block";
         exNote.textContent = `${exTotal} excluded · ${parts.join(" · ")}`;
         exNote.title = `These tickets are kept out of the summary cards because:
 - ${ns} have an empty "Seedtag specs" field
 - ${kw} match a special-product keyword (mosaic, creative intelligence, aura, generative ai, dco, creative compass)
+- ${fl} are flagged "yes" in customfield_11754 (exclude from metrics)
 They still appear in the ticket table below.`;
       } else {
         exNote.style.display = "none";
@@ -1245,26 +1248,25 @@ They still appear in the ticket table below.`;
       <span><span class="tag">ACTIVE</span><strong>${k.in_progress_active ?? 0}</strong></span>
       <span><span class="tag">WAITING</span><strong>${k.in_progress_waiting ?? 0}</strong></span>`;
 
-    // SLA compliance — overall + 3-bucket split (Specs / No specs / Prop)
+    // Public dashboard: clean 2-bucket view (CAMP combined vs PROP).
+    // The /admin/ page keeps the 3-bucket split (Specs / No specs / Prop).
     $("kpiSlaCompliance").innerHTML = (k.sla_compliance_pct != null)
       ? `${k.sla_compliance_pct}<span class="unit">%</span>` : "—";
     const slaCell = (pct, n) => pct != null ? `${pct}% · ${n || 0}` : "—";
     $("kpiSlaComplianceSplit").innerHTML = `
-      <span><span class="tag">SPECS</span><strong>${slaCell(k.sla_compliance_specs_pct,   k.sla_specs_n)}</strong></span>
-      <span><span class="tag">NO SPECS</span><strong>${slaCell(k.sla_compliance_nospecs_pct, k.sla_nospecs_n)}</strong></span>
-      <span><span class="tag">PROP</span><strong>${slaCell(k.sla_compliance_prop_pct,    k.sla_prop_n)}</strong></span>`;
+      <span><span class="tag">CAMP</span><strong>${slaCell(k.sla_compliance_camp_pct, k.sla_camp_n)}</strong></span>
+      <span><span class="tag">PROP</span><strong>${slaCell(k.sla_compliance_prop_pct, k.sla_prop_n)}</strong></span>`;
 
-    const splitHTML = (specs, nospecs, prop) => {
+    const splitHTML = (camp, prop) => {
       const cell = (v) => v != null ? fmtHours(v) + "h biz" : "—";
       return `
-        <span><span class="tag">SPECS</span><strong>${cell(specs)}</strong></span>
-        <span><span class="tag">NO SPECS</span><strong>${cell(nospecs)}</strong></span>
+        <span><span class="tag">CAMP</span><strong>${cell(camp)}</strong></span>
         <span><span class="tag">PROP</span><strong>${cell(prop)}</strong></span>`;
     };
     $("kpiDesignFirstSplit").innerHTML = splitHTML(
-      k.avg_design_first_specs_min, k.avg_design_first_nospecs_min, k.avg_design_first_prop_min);
+      k.avg_design_first_camp_combined_min, k.avg_design_first_prop_min);
     $("kpiDesignLastSplit").innerHTML  = splitHTML(
-      k.avg_design_last_specs_min,  k.avg_design_last_nospecs_min,  k.avg_design_last_prop_min);
+      k.avg_design_last_camp_combined_min,  k.avg_design_last_prop_min);
   }
 
   function makeChart(canvasId, config) {
