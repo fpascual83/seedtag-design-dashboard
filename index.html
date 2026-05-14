@@ -756,13 +756,13 @@
           <div class="sub">in selected period</div>
         </div>
         <div class="kpi">
-          <div class="label">Avg time to<br>1st delivery (SLA)</div>
+          <div class="label">Median time to<br>1st delivery (SLA)</div>
           <div class="value" id="kpiDesignFirst">—</div>
           <div class="split" id="kpiDesignFirstSplit"></div>
           <div class="sub">creation → first DONE, business hours</div>
         </div>
         <div class="kpi">
-          <div class="label">Avg total<br>design effort</div>
+          <div class="label">Median total<br>design effort</div>
           <div class="value" id="kpiDesignLast">—</div>
           <div class="split" id="kpiDesignLastSplit"></div>
           <div class="sub">incl. rework after corrections</div>
@@ -773,7 +773,7 @@
           <div class="sub">no corrections needed</div>
         </div>
         <div class="kpi">
-          <div class="label">Avg waiting<br>for customer</div>
+          <div class="label">Median waiting<br>for customer</div>
           <div class="value" id="kpiWaiting">—</div>
           <div class="sub">time on customer side</div>
         </div>
@@ -1216,22 +1216,26 @@
       <span><span class="tag">ACTIVE</span><strong>${k.in_progress_active ?? 0}</strong></span>
       <span><span class="tag">WAITING</span><strong>${k.in_progress_waiting ?? 0}</strong></span>`;
 
-    // SLA compliance — overall + split by fast (CAMP w/ Sent specs) and slow (everything else)
+    // SLA compliance — overall + 3-bucket split (Specs / No specs / Prop)
     $("kpiSlaCompliance").innerHTML = (k.sla_compliance_pct != null)
       ? `${k.sla_compliance_pct}<span class="unit">%</span>` : "—";
-    const fastLbl = (k.sla_compliance_fast_pct != null)
-      ? `${k.sla_compliance_fast_pct}% · ${k.sla_fast_n || 0}` : "—";
-    const slowLbl = (k.sla_compliance_slow_pct != null)
-      ? `${k.sla_compliance_slow_pct}% · ${k.sla_slow_n || 0}` : "—";
+    const slaCell = (pct, n) => pct != null ? `${pct}% · ${n || 0}` : "—";
     $("kpiSlaComplianceSplit").innerHTML = `
-      <span><span class="tag">FAST</span><strong>${fastLbl}</strong></span>
-      <span><span class="tag">SLOW</span><strong>${slowLbl}</strong></span>`;
+      <span><span class="tag">SPECS</span><strong>${slaCell(k.sla_compliance_specs_pct,   k.sla_specs_n)}</strong></span>
+      <span><span class="tag">NO SPECS</span><strong>${slaCell(k.sla_compliance_nospecs_pct, k.sla_nospecs_n)}</strong></span>
+      <span><span class="tag">PROP</span><strong>${slaCell(k.sla_compliance_prop_pct,    k.sla_prop_n)}</strong></span>`;
 
-    const splitHTML = (camp, prop) => `
-      <span><span class="tag">CAMP</span><strong>${camp != null ? fmtHours(camp) + "h biz" : "—"}</strong></span>
-      <span><span class="tag">PROP</span><strong>${prop != null ? fmtHours(prop) + "h biz" : "—"}</strong></span>`;
-    $("kpiDesignFirstSplit").innerHTML = splitHTML(k.avg_design_first_camp_min, k.avg_design_first_prop_min);
-    $("kpiDesignLastSplit").innerHTML  = splitHTML(k.avg_design_last_camp_min,  k.avg_design_last_prop_min);
+    const splitHTML = (specs, nospecs, prop) => {
+      const cell = (v) => v != null ? fmtHours(v) + "h biz" : "—";
+      return `
+        <span><span class="tag">SPECS</span><strong>${cell(specs)}</strong></span>
+        <span><span class="tag">NO SPECS</span><strong>${cell(nospecs)}</strong></span>
+        <span><span class="tag">PROP</span><strong>${cell(prop)}</strong></span>`;
+    };
+    $("kpiDesignFirstSplit").innerHTML = splitHTML(
+      k.avg_design_first_specs_min, k.avg_design_first_nospecs_min, k.avg_design_first_prop_min);
+    $("kpiDesignLastSplit").innerHTML  = splitHTML(
+      k.avg_design_last_specs_min,  k.avg_design_last_nospecs_min,  k.avg_design_last_prop_min);
   }
 
   function makeChart(canvasId, config) {
