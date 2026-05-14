@@ -332,6 +332,13 @@
       font-size: 7px; letter-spacing: 0.3em; text-transform: uppercase;
       color: var(--grey-3); margin-bottom: 14px;
     }
+    .excluded-note {
+      margin-left: 14px; padding: 2px 8px; border-radius: 999px;
+      background: rgba(255,107,124,0.10); color: var(--coral);
+      font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+      font-weight: 600; cursor: help;
+    }
+    .excluded-note:hover { background: rgba(255,107,124,0.18); }
 
     /* SLA timeline — compact, low-key strip */
     .sla-timeline { margin-bottom: 22px; }
@@ -748,7 +755,7 @@
       </div>
 
       <!-- KPIs -->
-      <div class="section-marker">K E Y &nbsp; M E T R I C S</div>
+      <div class="section-marker">K E Y &nbsp; M E T R I C S <span id="excludedNote" class="excluded-note" style="display:none"></span></div>
       <div class="kpi-grid">
         <div class="kpi">
           <div class="label">Tickets delivered</div>
@@ -1203,6 +1210,28 @@
   function renderKPIs(d) {
     const k = d.kpis || {};
     $("kpiDelivered").textContent = (k.tickets_delivered || 0).toLocaleString();
+
+    // "X tickets excluded" badge next to the section header — shows when
+    // there are tickets without specs filled in OR matching special-product keywords.
+    const exTotal = k.excluded_total_count || 0;
+    const exNote = $("excludedNote");
+    if (exNote) {
+      if (exTotal > 0) {
+        const ns = k.excluded_no_specs_count || 0;
+        const kw = k.excluded_keyword_count || 0;
+        const parts = [];
+        if (ns) parts.push(`${ns} no specs`);
+        if (kw) parts.push(`${kw} special products`);
+        exNote.style.display = "inline-block";
+        exNote.textContent = `${exTotal} excluded · ${parts.join(" · ")}`;
+        exNote.title = `These tickets are kept out of the summary cards because:
+- ${ns} have an empty "Seedtag specs" field
+- ${kw} match a special-product keyword (mosaic, creative intelligence, aura, generative ai, dco, creative compass)
+They still appear in the ticket table below.`;
+      } else {
+        exNote.style.display = "none";
+      }
+    }
     $("kpiDesignFirst").innerHTML = (k.avg_design_first_min != null)
       ? `${fmtHours(k.avg_design_first_min)}<span class="unit">h</span><span class="biz">biz · ${operatorTagLabel()}</span>` : "—";
     $("kpiDesignLast").innerHTML = (k.avg_design_last_min != null)
