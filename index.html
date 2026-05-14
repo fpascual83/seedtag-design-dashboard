@@ -339,6 +339,17 @@
       font-weight: 600; cursor: help;
     }
     .excluded-note:hover { background: rgba(255,107,124,0.18); }
+    /* Subtle "include skip" toggle next to the section marker. Off by default. */
+    .skip-toggle {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-left: 14px; padding: 2px 8px; border-radius: 999px;
+      font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--grey-3); cursor: pointer; user-select: none;
+      transition: color .15s ease, background .15s ease;
+    }
+    .skip-toggle:hover { color: var(--grey-1); }
+    .skip-toggle input { accent-color: var(--coral); width: 10px; height: 10px; cursor: pointer; }
+    .skip-toggle:has(input:checked) { color: var(--coral); background: rgba(255,107,124,0.08); }
 
     /* SLA timeline — compact, low-key strip */
     .sla-timeline { margin-bottom: 22px; }
@@ -778,23 +789,28 @@
       </div>
 
       <!-- KPIs -->
-      <div class="section-marker">K E Y &nbsp; M E T R I C S <span id="excludedNote" class="excluded-note" style="display:none"></span></div>
+      <div class="section-marker">
+        K E Y &nbsp; M E T R I C S
+        <span id="excludedNote" class="excluded-note" style="display:none"></span>
+        <label class="skip-toggle" title="Include tickets marked as Skip = Yes in customfield_11754">
+          <input type="checkbox" id="includeSkipped">
+          <span>include skip</span>
+        </label>
+      </div>
       <div class="kpi-grid">
         <div class="kpi">
           <div class="label">Tickets delivered</div>
           <div class="value" id="kpiDelivered">—</div>
           <div class="sub">in selected period</div>
         </div>
-        <div class="kpi">
+        <div class="kpi sla-card">
           <div class="label">Median time to<br>1st delivery (SLA)</div>
-          <div class="value" id="kpiDesignFirst">—</div>
-          <div class="split" id="kpiDesignFirstSplit"></div>
+          <div class="split sla-split" id="kpiDesignFirstSplit"></div>
           <div class="sub">creation → first DONE, business hours</div>
         </div>
-        <div class="kpi">
+        <div class="kpi sla-card">
           <div class="label">Median total<br>design effort</div>
-          <div class="value" id="kpiDesignLast">—</div>
-          <div class="split" id="kpiDesignLastSplit"></div>
+          <div class="split sla-split" id="kpiDesignLastSplit"></div>
           <div class="sub">incl. rework after corrections</div>
         </div>
         <div class="kpi">
@@ -1113,7 +1129,7 @@
     }
     return res.json();
   }
-  async function fetchDashboard({ market, from, to, kind, specs, brand, assignee }) {
+  async function fetchDashboard({ market, from, to, kind, specs, brand, assignee, includeSkipped }) {
     const params = new URLSearchParams();
     if (market && market.length) params.set("market", market.join(","));
     if (from) params.set("from", from);
@@ -1122,6 +1138,7 @@
     if (specs && specs !== "all") params.set("specs", specs);
     if (brand && brand.length) params.set("brand_assignee", brand.join(","));
     if (assignee && assignee.length) params.set("assignee", assignee.join(","));
+    if (includeSkipped) params.set("include_skipped", "1");
     return apiGet("/api/dashboard?" + params.toString());
   }
   async function fetchIssue(key) {
@@ -1164,7 +1181,8 @@
     const brand = brandSel ? Array.from(brandSel.selectedOptions).map(o => o.value) : [];
     const assSel = $("filterAssignee");
     const assignee = assSel ? Array.from(assSel.selectedOptions).map(o => o.value) : [];
-    return { market: markets, from: fromVal || "", to: toVal || "", kind, specs, brand, assignee };
+    const includeSkipped = $("includeSkipped") ? !!$("includeSkipped").checked : false;
+    return { market: markets, from: fromVal || "", to: toVal || "", kind, specs, brand, assignee, includeSkipped };
   }
 
   function setupMarketFilter(markets) {
@@ -1239,28 +1257,26 @@
     const exNote = $("excludedNote");
     if (exNote) {
       if (exTotal > 0) {
-        const ns = k.excluded_no_specs_count || 0;
         const kw = k.excluded_keyword_count || 0;
         const fl = k.excluded_flag_count || 0;
+        const empty = k.empty_specs_count || 0;
         const parts = [];
-        if (ns) parts.push(`${ns} no specs`);
         if (kw) parts.push(`${kw} special products`);
         if (fl) parts.push(`${fl} flagged`);
         exNote.style.display = "inline-block";
         exNote.textContent = `${exTotal} excluded · ${parts.join(" · ")}`;
         exNote.title = `These tickets are kept out of the summary cards because:
-- ${ns} have an empty "Seedtag specs" field
 - ${kw} match a special-product keyword (mosaic, creative intelligence, aura, generative ai, dco, creative compass)
 - ${fl} are flagged "yes" in customfield_11754 (exclude from metrics)
+${empty ? "\nNote: " + empty + " tickets in scope have an empty 'Seedtag specs' field — these are now counted under NO SPECS (slow SLA), not excluded." : ""}
 They still appear in the ticket table below.`;
       } else {
         exNote.style.display = "none";
       }
     }
-    $("kpiDesignFirst").innerHTML = (k.avg_design_first_min != null)
-      ? `${fmtHours(k.avg_design_first_min)}<span class="unit">h</span><span class="biz">biz · ${operatorTagLabel()}</span>` : "—";
-    $("kpiDesignLast").innerHTML = (k.avg_design_last_min != null)
-      ? `${fmtHours(k.avg_design_last_min)}<span class="unit">h</span><span class="biz">biz · ${operatorTagLabel()}</span>` : "—";
+    // kpiDesignFirst and kpiDesignLast no longer have a headline number —
+    // the CAMP / PROP pills below carry the values (see kpiDesignFirstSplit /
+    // kpiDesignLastSplit below).
     $("kpiFirstTime").innerHTML = (k.first_time_pct != null)
       ? `${k.first_time_pct}<span class="unit">%</span>` : "—";
     $("kpiWaiting").innerHTML = (k.avg_waiting_min != null)
@@ -1289,15 +1305,23 @@ They still appear in the ticket table below.`;
         <span class="sub-pill">${slaCount(k.sla_prop_n)}</span>
       </span>`;
 
-    const splitHTML = (camp, prop) => {
-      const cell = (v) => v != null ? fmtHours(v) + "h biz" : "—";
-      return `
-        <span><span class="tag">CAMP</span><strong>${cell(camp)}</strong></span>
-        <span><span class="tag">PROP</span><strong>${cell(prop)}</strong></span>`;
-    };
-    $("kpiDesignFirstSplit").innerHTML = splitHTML(
+    // Use the same big-pill layout as the SLA compliance card.
+    const timeCell = (mins) => mins != null ? `${fmtHours(mins)}h` : "—";
+    const subLine = `biz · ${operatorTagLabel()}`;
+    const renderTimeSplit = (campMin, propMin) => `
+      <span class="sla-pill">
+        <span class="tag">CAMP</span>
+        <strong class="big">${timeCell(campMin)}</strong>
+        <span class="sub-pill">${subLine}</span>
+      </span>
+      <span class="sla-pill">
+        <span class="tag">PROP</span>
+        <strong class="big">${timeCell(propMin)}</strong>
+        <span class="sub-pill">${subLine}</span>
+      </span>`;
+    $("kpiDesignFirstSplit").innerHTML = renderTimeSplit(
       k.avg_design_first_camp_combined_min, k.avg_design_first_prop_min);
-    $("kpiDesignLastSplit").innerHTML  = splitHTML(
+    $("kpiDesignLastSplit").innerHTML  = renderTimeSplit(
       k.avg_design_last_camp_combined_min,  k.avg_design_last_prop_min);
   }
 
@@ -1612,7 +1636,12 @@ They still appear in the ticket table below.`;
     const tbody = document.querySelector("#ticketsTable tbody");
     const rows = filteredTable().map(applyOverride);
     const sorted = rows.slice().sort((a, b) => {
-      const k = STATE.sortKey, va = a[k], vb = b[k];
+      const k = STATE.sortKey;
+      // For the "Delivered" column, sort by the moment we actually show in the
+      // cell (first valid delivery, else last DONE) so the table is internally
+      // consistent.
+      const pick = (r) => k === "deliveredAt" ? (r.firstDeliveredAt || r.deliveredAt) : r[k];
+      const va = pick(a), vb = pick(b);
       if (va == null && vb == null) return 0;
       if (va == null) return 1;
       if (vb == null) return -1;
@@ -1637,8 +1666,14 @@ They still appear in the ticket table below.`;
           ${ed("", "market", `<span class="pill">${escapeHtml(r.market || "—")}</span>`)}
           <td>${r.kind && r.kind !== "—" ? `<span class="pill grey">${escapeHtml(r.kind)}</span>` : "—"}</td>
           ${ed("", "seedtag_specs", escapeHtml(r.seedtagSpecs || "—"))}
-          ${ed("", "delivered_at", r.deliveredAt ? new Date(r.deliveredAt).toLocaleDateString() : "—")}
-          ${ed("", "bm_design_first", fmtMin(r.designFirstMin ?? r.designMin))}
+          ${ed("", "delivered_at", (() => {
+            // Mirror the KPI semantics: use the first valid delivery moment
+            // (a Waiting-for-customer that followed real work, per Rule A) when
+            // it exists; otherwise fall back to the last DONE.
+            const when = r.firstDeliveredAt || r.deliveredAt;
+            return when ? new Date(when).toLocaleDateString() : "—";
+          })())}
+          ${ed("", "bm_design_first", fmtMin(r.designFirstMin))}
           ${ed("", "bm_design_last", fmtMin(r.designLastMin ?? r.designMin))}
           ${ed("", "bm_waiting_customer", fmtMin(r.waitingMin))}
           ${ed("", "corrections", r.corrections)}
@@ -2056,6 +2091,18 @@ They still appear in the ticket table below.`;
     $("filterTo").addEventListener("change", scheduleReload);
     $("filterKind").addEventListener("change", scheduleReload);
     $("filterSpecs").addEventListener("change", scheduleReload);
+    // Subtle toggle that brings Skip = Yes tickets back into the metrics.
+    // Remembers the user's choice across reloads via localStorage.
+    const skipBox = $("includeSkipped");
+    if (skipBox) {
+      try {
+        skipBox.checked = localStorage.getItem("sdsIncludeSkipped") === "1";
+      } catch (_) {}
+      skipBox.addEventListener("change", () => {
+        try { localStorage.setItem("sdsIncludeSkipped", skipBox.checked ? "1" : "0"); } catch (_) {}
+        scheduleReload();
+      });
+    }
 
     // In-progress filter toggle (All / Active / Waiting customer)
     const ipf = $("inProgFilter");
