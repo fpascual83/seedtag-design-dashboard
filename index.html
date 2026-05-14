@@ -339,17 +339,12 @@
       font-weight: 600; cursor: help;
     }
     .excluded-note:hover { background: rgba(255,107,124,0.18); }
-    /* Subtle "include skip" toggle next to the section marker. Off by default. */
-    .skip-toggle {
-      display: inline-flex; align-items: center; gap: 6px;
-      margin-left: 14px; padding: 2px 8px; border-radius: 999px;
-      font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
-      color: var(--grey-3); cursor: pointer; user-select: none;
-      transition: color .15s ease, background .15s ease;
+    /* Tiny checkbox tucked next to the "flagged" count inside the pill.
+       Toggles whether Skip = Yes tickets are included in the metrics. */
+    .excluded-note .skip-cb {
+      width: 10px; height: 10px; margin: 0 0 0 4px;
+      vertical-align: -1px; accent-color: var(--coral); cursor: pointer;
     }
-    .skip-toggle:hover { color: var(--grey-1); }
-    .skip-toggle input { accent-color: var(--coral); width: 10px; height: 10px; cursor: pointer; }
-    .skip-toggle:has(input:checked) { color: var(--coral); background: rgba(255,107,124,0.08); }
 
     /* SLA timeline — compact, low-key strip */
     .sla-timeline { margin-bottom: 22px; }
@@ -789,14 +784,7 @@
       </div>
 
       <!-- KPIs -->
-      <div class="section-marker">
-        K E Y &nbsp; M E T R I C S
-        <span id="excludedNote" class="excluded-note" style="display:none"></span>
-        <label class="skip-toggle" title="Include tickets marked as Skip = Yes in customfield_11754">
-          <input type="checkbox" id="includeSkipped">
-          <span>include skip</span>
-        </label>
-      </div>
+      <div class="section-marker">K E Y &nbsp; M E T R I C S <span id="excludedNote" class="excluded-note" style="display:none"></span></div>
       <div class="kpi-grid">
         <div class="kpi">
           <div class="label">Tickets delivered</div>
@@ -1181,7 +1169,10 @@
     const brand = brandSel ? Array.from(brandSel.selectedOptions).map(o => o.value) : [];
     const assSel = $("filterAssignee");
     const assignee = assSel ? Array.from(assSel.selectedOptions).map(o => o.value) : [];
-    const includeSkipped = $("includeSkipped") ? !!$("includeSkipped").checked : false;
+    // Read the Skip toggle state from localStorage (the checkbox lives inside
+    // the dynamic excluded-note pill and may not exist on first render).
+    let includeSkipped = false;
+    try { includeSkipped = localStorage.getItem("sdsIncludeSkipped") === "1"; } catch (_) {}
     return { market: markets, from: fromVal || "", to: toVal || "", kind, specs, brand, assignee, includeSkipped };
   }
 
@@ -1256,20 +1247,41 @@
     const exTotal = k.excluded_total_count || 0;
     const exNote = $("excludedNote");
     if (exNote) {
-      if (exTotal > 0) {
-        const kw = k.excluded_keyword_count || 0;
-        const fl = k.excluded_flag_count || 0;
-        const empty = k.empty_specs_count || 0;
+      const kw = k.excluded_keyword_count || 0;
+      const fl = k.excluded_flag_count || 0;
+      const empty = k.empty_specs_count || 0;
+      let includeSkipped = false;
+      try { includeSkipped = localStorage.getItem("sdsIncludeSkipped") === "1"; } catch (_) {}
+      // Show the pill if there's anything excluded OR any flagged tickets in
+      // scope (so the user can always reach the toggle).
+      if (exTotal > 0 || fl > 0) {
         const parts = [];
         if (kw) parts.push(`${kw} special products`);
-        if (fl) parts.push(`${fl} flagged`);
+        if (fl) {
+          // The checkbox sits glued to "flagged"; clicking it flips the toggle.
+          const checked = includeSkipped ? "checked" : "";
+          parts.push(`${fl} flagged <input type="checkbox" id="includeSkipped" class="skip-cb" ${checked} title="Include Skip = Yes tickets in the metrics">`);
+        }
         exNote.style.display = "inline-block";
-        exNote.textContent = `${exTotal} excluded · ${parts.join(" · ")}`;
+        exNote.innerHTML = exTotal > 0
+          ? `${exTotal} excluded · ${parts.join(" · ")}`
+          : parts.join(" · ");
         exNote.title = `These tickets are kept out of the summary cards because:
 - ${kw} match a special-product keyword (mosaic, creative intelligence, aura, generative ai, dco, creative compass)
-- ${fl} are flagged "yes" in customfield_11754 (exclude from metrics)
+- ${fl} are flagged "yes" in customfield_11754 (exclude from metrics) — checkbox toggles this
 ${empty ? "\nNote: " + empty + " tickets in scope have an empty 'Seedtag specs' field — these are now counted under NO SPECS (slow SLA), not excluded." : ""}
 They still appear in the ticket table below.`;
+        // The checkbox is part of the dynamically-rebuilt pill, so we wire its
+        // change handler every render. Clicks bubble to the pill's hover-cursor
+        // parent, so stopPropagation keeps the tooltip behaviour intact.
+        const cb = $("includeSkipped");
+        if (cb) {
+          cb.addEventListener("click", e => e.stopPropagation());
+          cb.addEventListener("change", () => {
+            try { localStorage.setItem("sdsIncludeSkipped", cb.checked ? "1" : "0"); } catch (_) {}
+            scheduleReload();
+          });
+        }
       } else {
         exNote.style.display = "none";
       }
@@ -2091,18 +2103,8 @@ They still appear in the ticket table below.`;
     $("filterTo").addEventListener("change", scheduleReload);
     $("filterKind").addEventListener("change", scheduleReload);
     $("filterSpecs").addEventListener("change", scheduleReload);
-    // Subtle toggle that brings Skip = Yes tickets back into the metrics.
-    // Remembers the user's choice across reloads via localStorage.
-    const skipBox = $("includeSkipped");
-    if (skipBox) {
-      try {
-        skipBox.checked = localStorage.getItem("sdsIncludeSkipped") === "1";
-      } catch (_) {}
-      skipBox.addEventListener("change", () => {
-        try { localStorage.setItem("sdsIncludeSkipped", skipBox.checked ? "1" : "0"); } catch (_) {}
-        scheduleReload();
-      });
-    }
+    // The "include skip" checkbox lives inside the excluded-note pill (next to
+    // the "flagged" count) and is wired in renderKPIs when the pill is built.
 
     // In-progress filter toggle (All / Active / Waiting customer)
     const ipf = $("inProgFilter");
