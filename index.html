@@ -435,6 +435,29 @@
       text-transform: uppercase; letter-spacing: 0.16em;
     }
     .kpi .split strong { color: var(--white); font-weight: 500; font-size: 13px; }
+    /* SLA card: no aggregated headline; CAMP/PROP pills carry the values themselves. */
+    .kpi.sla-card .sla-split {
+      display: flex; flex-direction: column; gap: 12px;
+      margin-top: 4px;
+    }
+    .kpi.sla-card .sla-pill {
+      display: grid;
+      grid-template-columns: 60px 1fr;
+      grid-template-rows: auto auto;
+      column-gap: 12px; align-items: baseline;
+    }
+    .kpi.sla-card .sla-pill .tag {
+      grid-row: 1 / span 2; align-self: center;
+      font-size: 10px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.18em;
+    }
+    .kpi.sla-card .sla-pill strong.big {
+      font-size: 30px; font-weight: 500; line-height: 1;
+      letter-spacing: -0.01em; color: var(--white);
+    }
+    .kpi.sla-card .sla-pill .sub-pill {
+      font-size: 11px; color: var(--grey-3); margin-top: 2px;
+    }
 
     /* Charts */
     .charts-grid {
@@ -790,10 +813,9 @@
           <div class="split" id="kpiInProgressSplit"></div>
           <div class="sub">active in Design + waiting customer</div>
         </div>
-        <div class="kpi">
+        <div class="kpi sla-card">
           <div class="label">SLA compliance</div>
-          <div class="value" id="kpiSlaCompliance">—<span class="unit">%</span></div>
-          <div class="split" id="kpiSlaComplianceSplit"></div>
+          <div class="split sla-split" id="kpiSlaComplianceSplit"></div>
           <div class="sub">delivered within target time</div>
         </div>
       </div>
@@ -1250,12 +1272,22 @@ They still appear in the ticket table below.`;
 
     // Public dashboard: clean 2-bucket view (CAMP combined vs PROP).
     // The /admin/ page keeps the 3-bucket split (Specs / No specs / Prop).
-    $("kpiSlaCompliance").innerHTML = (k.sla_compliance_pct != null)
-      ? `${k.sla_compliance_pct}<span class="unit">%</span>` : "—";
-    const slaCell = (pct, n) => pct != null ? `${pct}% · ${n || 0}` : "—";
+    // We intentionally drop the aggregated overall SLA % here — mixing two
+    // ticket kinds with different difficulty profiles produces a number that's
+    // hard to act on.
+    const slaCell = (pct, n) => pct != null ? `${pct}%` : "—";
+    const slaCount = (n) => n != null ? `${n} delivered` : "";
     $("kpiSlaComplianceSplit").innerHTML = `
-      <span><span class="tag">CAMP</span><strong>${slaCell(k.sla_compliance_camp_pct, k.sla_camp_n)}</strong></span>
-      <span><span class="tag">PROP</span><strong>${slaCell(k.sla_compliance_prop_pct, k.sla_prop_n)}</strong></span>`;
+      <span class="sla-pill">
+        <span class="tag">CAMP</span>
+        <strong class="big">${slaCell(k.sla_compliance_camp_pct, k.sla_camp_n)}</strong>
+        <span class="sub-pill">${slaCount(k.sla_camp_n)}</span>
+      </span>
+      <span class="sla-pill">
+        <span class="tag">PROP</span>
+        <strong class="big">${slaCell(k.sla_compliance_prop_pct, k.sla_prop_n)}</strong>
+        <span class="sub-pill">${slaCount(k.sla_prop_n)}</span>
+      </span>`;
 
     const splitHTML = (camp, prop) => {
       const cell = (v) => v != null ? fmtHours(v) + "h biz" : "—";
