@@ -346,16 +346,51 @@
       vertical-align: -1px; accent-color: var(--coral); cursor: pointer;
     }
 
-    /* SLA timeline — compact, low-key strip */
-    .sla-timeline { margin-bottom: 22px; }
-    .sla-legend {
-      font-size: 10px;
-      color: var(--grey-3);
-      text-transform: uppercase;
-      letter-spacing: 0.18em;
-      margin-bottom: 6px;
+    /* SLA reference: prominent current targets + small period buttons. */
+    .sla-reference {
+      margin-bottom: 26px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 22px;
+      align-items: center;
     }
-    .sla-legend span { color: var(--grey-1); }
+    @media (max-width: 1100px) {
+      .sla-reference { grid-template-columns: 1fr; gap: 14px; }
+    }
+    .sla-current {
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 14px 18px;
+      background: linear-gradient(90deg, rgba(255,107,124,0.04), transparent 60%);
+    }
+    .sla-current-label {
+      font-size: 10px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.18em;
+      margin-bottom: 10px;
+    }
+    .sla-current-row {
+      display: flex; gap: 28px; flex-wrap: wrap;
+    }
+    .sla-target {
+      display: inline-flex; align-items: baseline; gap: 12px;
+    }
+    .sla-target .sla-h {
+      font-size: 26px; font-weight: 500; color: var(--coral);
+      line-height: 1; letter-spacing: -0.01em;
+    }
+    .sla-target .sla-desc {
+      font-size: 13px; color: var(--white);
+    }
+    .sla-target .sla-desc em {
+      font-style: normal; color: var(--grey-3); font-size: 12px;
+    }
+    .sla-history {
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .sla-history-label {
+      font-size: 9px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.18em;
+    }
     .sla-row { display: flex; gap: 8px; flex-wrap: wrap; }
     .sla-period {
       background: transparent;
@@ -784,7 +819,11 @@
             <label>To</label>
             <input id="filterTo" type="date" />
           </div>
-          <div class="filter">
+          <!-- Kind + Specs dropdowns were removed from the top filter bar.
+               The new CAMP / PROP split inside each KPI card (and the SLA
+               compliance card breakdown) makes the filters redundant. They
+               are still available on the admin view. -->
+          <div class="filter admin-only">
             <label>Kind</label>
             <select id="filterKind">
               <option value="all">All</option>
@@ -792,7 +831,7 @@
               <option value="prop">Proposals</option>
             </select>
           </div>
-          <div class="filter">
+          <div class="filter admin-only">
             <label>Specs</label>
             <select id="filterSpecs">
               <option value="all">All</option>
@@ -827,22 +866,39 @@
     <main>
       <div id="errorBanner" class="error-banner"></div>
 
-      <!-- SLA timeline: compact clickable period strip -->
-      <div class="sla-timeline" id="slaTimeline">
-        <div class="sla-legend">SLA · <span>CAMP w/ specs</span> / <span>everything else</span> · business hours per operator entity · click to filter, click again to clear</div>
-        <div class="sla-row">
-          <button class="sla-period" data-from="2026-01-01" data-to="2026-03-31">
-            <span class="sla-range">1 Jan → 1 Apr</span>
-            <span class="sla-targets"><strong>8h</strong><span class="bh">biz</span> / <strong>16h</strong><span class="bh">biz</span></span>
-          </button>
-          <button class="sla-period" data-from="2026-04-01" data-to="2026-05-10">
-            <span class="sla-range">1 Apr → 11 May</span>
-            <span class="sla-targets"><strong>16h</strong><span class="bh">biz</span> / <strong>24h</strong><span class="bh">biz</span></span>
-          </button>
-          <button class="sla-period" data-from="2026-05-11" data-to="">
-            <span class="sla-range">11 May → today</span>
-            <span class="sla-targets"><strong>8h</strong><span class="bh">biz</span> / <strong>16h</strong><span class="bh">biz</span></span>
-          </button>
+      <!-- SLA reference: highlights the CURRENT 1st-delivery SLA targets so
+           CSMs always have them visible. Historical periods are kept below as
+           secondary click-to-filter shortcuts. -->
+      <div class="sla-reference" id="slaTimeline">
+        <div class="sla-current">
+          <div class="sla-current-label">Current SLA · 1st delivery · business hours per Operator Entity</div>
+          <div class="sla-current-row">
+            <span class="sla-target">
+              <strong class="sla-h">8h</strong>
+              <span class="sla-desc">CAMP <em>w/ specs</em> · Mosaic</span>
+            </span>
+            <span class="sla-target">
+              <strong class="sla-h">16h</strong>
+              <span class="sla-desc">CAMP <em>w/o specs</em> · Proposals</span>
+            </span>
+          </div>
+        </div>
+        <div class="sla-history">
+          <span class="sla-history-label">Filter by period</span>
+          <div class="sla-row">
+            <button class="sla-period" data-from="2026-01-01" data-to="2026-03-31">
+              <span class="sla-range">1 Jan → 1 Apr</span>
+              <span class="sla-targets"><strong>8h</strong> / <strong>16h</strong></span>
+            </button>
+            <button class="sla-period" data-from="2026-04-01" data-to="2026-05-10">
+              <span class="sla-range">1 Apr → 11 May</span>
+              <span class="sla-targets"><strong>16h</strong> / <strong>24h</strong></span>
+            </button>
+            <button class="sla-period" data-from="2026-05-11" data-to="">
+              <span class="sla-range">11 May → today</span>
+              <span class="sla-targets"><strong>8h</strong> / <strong>16h</strong></span>
+            </button>
+          </div>
         </div>
       </div>
 
