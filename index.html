@@ -635,13 +635,11 @@
     .ticket-detail .td-close:hover { color: var(--white); border-color: var(--coral); }
     .ticket-detail .td-metrics {
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 12px;
       margin-bottom: 16px;
     }
-    @media (max-width: 1300px) { .ticket-detail .td-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     @media (max-width: 900px)  {
-      .ticket-detail .td-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .ticket-result { grid-template-columns: 80px 1fr; row-gap: 4px; }
       .ticket-result .tr-meta { grid-column: 2; }
     }
@@ -2902,10 +2900,17 @@ They still appear in the ticket table below.`;
     const medianEffort = isProp ? k.avg_design_last_prop_min  : k.avg_design_last_camp_combined_min;
     const medianTotal  = isProp ? k.avg_total_prop_min        : k.avg_total_camp_min;
     const medianWait   = k.avg_waiting_min;
+    const medianRounds = k.avg_rounds;
     const colorBelow = (v, ref) => (v == null || ref == null) ? "" : (v <= ref ? "ok" : "bad");
+    // Customer-side time = explicit Waiting-for-customer + every intermediate
+    // Done (those Done segments that were followed by another correction).
+    // The final Done is naturally excluded because bm_done_intermediate already
+    // ignores it.
+    const customerSideMin = (row.waitingMin || 0) + (row.doneIntermediateMin || 0);
     const effortClass = colorBelow(row.designLastMin, medianEffort);
     const totalClass  = colorBelow(row.totalMin,      medianTotal);
-    const waitClass   = colorBelow(row.waitingMin,    medianWait);
+    const waitClass   = colorBelow(customerSideMin,   medianWait);
+    const roundsClass = colorBelow(row.doneVisits,    medianRounds);
     const specsClass  = row.seedtagSpecs === "Sent" ? "ok"
                       : (row.seedtagSpecs === "Not sent" || row.seedtagSpecs === "Not needed") ? "bad" : "";
     const jiraUrl = "https://seedtag.atlassian.net/browse/" + encodeURIComponent(row.key);
@@ -2938,8 +2943,13 @@ They still appear in the ticket table below.`;
         </div>
         <div class="td-metric ${waitClass}">
           <div class="label">Waiting for customer</div>
-          <div class="value">${fmtMin(row.waitingMin)}</div>
-          <div class="hint">customer side · median ${fmtMin(medianWait)}</div>
+          <div class="value">${fmtMin(customerSideMin)}</div>
+          <div class="hint">incl. intermediate Done · median ${fmtMin(medianWait)}</div>
+        </div>
+        <div class="td-metric ${roundsClass}">
+          <div class="label">Rounds with customer</div>
+          <div class="value">${row.doneVisits != null ? row.doneVisits : "—"}</div>
+          <div class="hint">times in DONE · median ${medianRounds != null ? medianRounds : "—"}</div>
         </div>
         <div class="td-metric ${slaClass}">
           <div class="label">Within SLA</div>
