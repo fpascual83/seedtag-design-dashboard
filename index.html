@@ -441,46 +441,58 @@
       text-transform: uppercase; letter-spacing: 0.16em;
     }
     .kpi .split strong { color: var(--white); font-weight: 500; font-size: 13px; }
-    /* Pipeline card: two mini-KPIs side by side (delivered + in progress). */
+    /* Pipeline card: two mini-KPIs side by side (delivered + in progress,
+       median time + total effort). Each half lays out vertically. */
     .kpi.pipeline-card {
       display: grid;
-      grid-template-columns: 1fr auto 1fr;
+      grid-template-columns: 1fr 1px 1fr;
       align-items: stretch;
-      gap: 18px;
+      gap: 22px;
     }
     .kpi.pipeline-card .pipeline-half {
       display: flex; flex-direction: column; min-width: 0;
     }
-    .kpi.pipeline-card .pipeline-half .value { margin-top: 4px; }
+    .kpi.pipeline-card .pipeline-half .value { margin-top: 6px; }
     .kpi.pipeline-card .pipeline-half .split { margin-top: 6px; }
-    .kpi.pipeline-card .pipeline-half .sub { margin-top: auto; padding-top: 8px; }
+    .kpi.pipeline-card .pipeline-half .sub { margin-top: auto; padding-top: 10px; }
     .kpi.pipeline-card .pipeline-divider {
-      width: 1px;
       background: linear-gradient(to bottom, transparent, var(--grey-4) 20%, var(--grey-4) 80%, transparent);
     }
-    /* SLA card: no aggregated headline; CAMP/PROP pills carry the values themselves. */
-    .kpi.sla-card .sla-split {
-      display: flex; flex-direction: column; gap: 12px;
-      margin-top: 4px;
+    /* SLA-pill blocks: shared layout used by SLA compliance card AND the two
+       halves of the time-card. Each pill is a 2-column grid:
+       [TAG] | [big value]
+              [sub-line]   */
+    .sla-split {
+      display: flex; flex-direction: column; gap: 14px;
+      margin-top: 6px;
     }
-    .kpi.sla-card .sla-pill {
-      display: grid;
-      grid-template-columns: 60px 1fr;
+    .sla-pill {
+      display: grid !important;
+      grid-template-columns: 56px 1fr;
       grid-template-rows: auto auto;
-      column-gap: 12px; align-items: baseline;
+      column-gap: 12px;
+      align-items: baseline;
     }
-    .kpi.sla-card .sla-pill .tag {
+    .sla-pill .tag {
       grid-row: 1 / span 2; align-self: center;
       font-size: 10px; color: var(--grey-3);
       text-transform: uppercase; letter-spacing: 0.18em;
     }
-    .kpi.sla-card .sla-pill strong.big {
-      font-size: 30px; font-weight: 500; line-height: 1;
+    .sla-pill strong.big {
+      font-size: 28px; font-weight: 500; line-height: 1;
       letter-spacing: -0.01em; color: var(--white);
+      grid-column: 2; grid-row: 1;
     }
-    .kpi.sla-card .sla-pill .sub-pill {
-      font-size: 11px; color: var(--grey-3); margin-top: 2px;
+    .sla-pill .sub-pill {
+      grid-column: 2; grid-row: 2;
+      font-size: 10px; color: var(--grey-3);
+      margin-top: 2px;
+      letter-spacing: 0.02em;
     }
+    /* Inside the narrower time-card halves, shrink things slightly so two
+       pills + sub line don't fight for space. */
+    .kpi.pipeline-card.time-card .sla-pill strong.big { font-size: 24px; }
+    .kpi.pipeline-card.time-card .sla-pill { grid-template-columns: 46px 1fr; }
 
     /* Charts */
     .charts-grid {
@@ -816,7 +828,7 @@
             <div class="label">In progress now</div>
             <div class="value" id="kpiInProgress">—</div>
             <div class="split" id="kpiInProgressSplit"></div>
-            <div class="sub">active in Design + waiting customer</div>
+            <div class="sub">in design + waiting customer</div>
           </div>
         </div>
         <!-- Time-to-delivery card: pairs the SLA-clock median with the full
@@ -1335,19 +1347,20 @@ They still appear in the ticket table below.`;
         <span class="sub-pill">${slaCount(k.sla_prop_n)}</span>
       </span>`;
 
-    // Use the same big-pill layout as the SLA compliance card.
+    // Use the same big-pill layout as the SLA compliance card. We drop the
+    // "per operator entity" caveat here — it's already visible in the filter
+    // bar and the chart legends — to keep each pill on a single short line.
     const timeCell = (mins) => mins != null ? `${fmtHours(mins)}h` : "—";
-    const subLine = `biz · ${operatorTagLabel()}`;
     const renderTimeSplit = (campMin, propMin) => `
       <span class="sla-pill">
         <span class="tag">CAMP</span>
         <strong class="big">${timeCell(campMin)}</strong>
-        <span class="sub-pill">${subLine}</span>
+        <span class="sub-pill">biz hours</span>
       </span>
       <span class="sla-pill">
         <span class="tag">PROP</span>
         <strong class="big">${timeCell(propMin)}</strong>
-        <span class="sub-pill">${subLine}</span>
+        <span class="sub-pill">biz hours</span>
       </span>`;
     $("kpiDesignFirstSplit").innerHTML = renderTimeSplit(
       k.avg_design_first_camp_combined_min, k.avg_design_first_prop_min);
