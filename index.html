@@ -489,10 +489,15 @@
       margin-top: 2px;
       letter-spacing: 0.02em;
     }
-    /* Inside the narrower time-card halves, shrink things slightly so two
-       pills + sub line don't fight for space. */
-    .kpi.pipeline-card.time-card .sla-pill strong.big { font-size: 24px; }
-    .kpi.pipeline-card.time-card .sla-pill { grid-template-columns: 46px 1fr; }
+    /* Time-card holds 3 halves (1st delivery / total effort / creation→done)
+       instead of the 2 in the pipeline-card. Tighter typography keeps the
+       pills readable across all three columns. */
+    .kpi.pipeline-card.time-card {
+      grid-template-columns: 1fr 1px 1fr 1px 1fr;
+      gap: 18px;
+    }
+    .kpi.pipeline-card.time-card .sla-pill strong.big { font-size: 22px; }
+    .kpi.pipeline-card.time-card .sla-pill { grid-template-columns: 44px 1fr; column-gap: 10px; }
 
     /* Charts */
     .charts-grid {
@@ -831,8 +836,10 @@
             <div class="sub">in design + waiting customer</div>
           </div>
         </div>
-        <!-- Time-to-delivery card: pairs the SLA-clock median with the full
-             effort median, both split by CAMP / PROP. -->
+        <!-- Time-to-delivery card: 3 medians, all split by CAMP / PROP.
+             1. SLA clock (creation → first delivery, excludes waiting/done).
+             2. Total design effort across corrections (excludes waiting/done).
+             3. Calendar time creation → last DONE (includes everything). -->
         <div class="kpi pipeline-card time-card">
           <div class="pipeline-half">
             <div class="label">Median time to<br>1st delivery (SLA)</div>
@@ -844,6 +851,12 @@
             <div class="label">Median total<br>design effort</div>
             <div class="split sla-split" id="kpiDesignLastSplit"></div>
             <div class="sub">incl. rework after corrections</div>
+          </div>
+          <div class="pipeline-divider"></div>
+          <div class="pipeline-half">
+            <div class="label">Median creation<br>→ last DONE</div>
+            <div class="split sla-split" id="kpiTotalSplit"></div>
+            <div class="sub">incl. waiting + corrections</div>
           </div>
         </div>
         <div class="kpi sla-card">
@@ -1366,6 +1379,12 @@ They still appear in the ticket table below.`;
       k.avg_design_first_camp_combined_min, k.avg_design_first_prop_min);
     $("kpiDesignLastSplit").innerHTML  = renderTimeSplit(
       k.avg_design_last_camp_combined_min,  k.avg_design_last_prop_min);
+    // 3rd half: median calendar time from creation to LAST done (bm_total).
+    const kpiTotal = $("kpiTotalSplit");
+    if (kpiTotal) {
+      kpiTotal.innerHTML = renderTimeSplit(
+        k.avg_total_camp_min, k.avg_total_prop_min);
+    }
   }
 
   function makeChart(canvasId, config) {
