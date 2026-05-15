@@ -658,10 +658,62 @@
     }
     /* Green for "at or below median / within SLA / specs sent",
        coral for the opposite. The whole card border tints, not just text. */
-    .ticket-detail .td-metric.ok  { border-color: rgba(110,229,158,0.45); background: rgba(110,229,158,0.06); }
-    .ticket-detail .td-metric.ok  .value { color: #6ee59e; }
-    .ticket-detail .td-metric.bad { border-color: rgba(255,107,124,0.45); background: rgba(255,107,124,0.06); }
-    .ticket-detail .td-metric.bad .value { color: var(--coral); }
+    .ticket-detail .td-metric.ok,
+    .ticket-detail .td-sub-metric.ok  { border-color: rgba(110,229,158,0.45); background: rgba(110,229,158,0.06); }
+    .ticket-detail .td-metric.ok .value,
+    .ticket-detail .td-sub-metric.ok .value { color: #6ee59e; }
+    .ticket-detail .td-metric.bad,
+    .ticket-detail .td-sub-metric.bad { border-color: rgba(255,107,124,0.45); background: rgba(255,107,124,0.06); }
+    .ticket-detail .td-metric.bad .value,
+    .ticket-detail .td-sub-metric.bad .value { color: var(--coral); }
+    /* Combo card groups two related metrics with a thin divider so the user
+       sees "design time" and "customer time" as a single conceptual block,
+       which together sum up to the "Total time" card. */
+    .ticket-detail .td-metric-combo {
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 12px;
+      grid-column: span 2;
+    }
+    .ticket-detail .td-combo-title {
+      font-size: 10px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.18em;
+      margin-bottom: 10px;
+    }
+    .ticket-detail .td-combo-inner {
+      display: grid;
+      grid-template-columns: 1fr 1px 1fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+    .ticket-detail .td-sub-metric {
+      padding: 10px 12px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.02);
+    }
+    .ticket-detail .td-sub-metric .label {
+      font-size: 9px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.18em;
+      margin-bottom: 6px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .ticket-detail .td-sub-metric .value {
+      font-size: 16px; font-weight: 500; color: var(--white);
+    }
+    .ticket-detail .td-sub-metric .hint {
+      font-size: 10px; color: var(--grey-3); margin-top: 4px;
+    }
+    .ticket-detail .td-sub-divider {
+      background: linear-gradient(to bottom, transparent, var(--grey-4) 20%, var(--grey-4) 80%, transparent);
+    }
+    .ticket-detail .sla-badge {
+      font-size: 9px; padding: 2px 6px; border-radius: 999px;
+      letter-spacing: 0.10em; text-transform: uppercase; font-weight: 500;
+      background: rgba(255,255,255,0.06); color: var(--grey-3);
+    }
+    .ticket-detail .sla-badge.ok  { background: rgba(110,229,158,0.18); color: #6ee59e; }
+    .ticket-detail .sla-badge.bad { background: rgba(255,107,124,0.18); color: var(--coral); }
     .ticket-detail .td-metric .hint {
       font-size: 10px; color: var(--grey-3); margin-top: 4px;
     }
@@ -2885,12 +2937,19 @@ They still appear in the ticket table below.`;
     const target = slaPeriod(row.firstDeliveredAt)[isSpecs ? "fast" : "slow"];
     const firstMin = row.designFirstMin;
     const delivered = row.status && row.status.toLowerCase() === "done" || !!row.firstDeliveredAt;
-    let slaCell = '<span class="hint">in progress</span>', slaClass = "";
+    let slaCell, slaClass = "", slaState = "in-progress";
     if (delivered && firstMin != null) {
       const ok = firstMin <= target;
-      slaCell = ok ? "Yes" : "No";
-      slaClass = ok ? "ok" : "bad";
+      slaCell  = ok ? "Yes" : "No";
+      slaClass = ok ? "ok"  : "bad";
+      slaState = ok ? "in"  : "out";
+    } else {
+      slaCell = '<span class="hint">in progress</span>';
     }
+    const slaBadge =
+      slaState === "in"  ? `<span class="sla-badge ok">in SLA</span>` :
+      slaState === "out" ? `<span class="sla-badge bad">out of SLA</span>` :
+                           `<span class="sla-badge">in progress</span>`;
     const dateShort = (iso) => iso ? new Date(iso).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" }) : "—";
     // Reference medians from the loaded dashboard payload — used to color the
     // metric cards green (≤ median) or red (> median).
@@ -2925,36 +2984,46 @@ They still appear in the ticket table below.`;
         </a>
         <button class="td-close" id="tdClose">close</button>
       </div>
+      <!-- Mental model surfaced to the user: design time + customer time = total time.
+           Two combo cards group the related metrics, then total + specs sit
+           on their own. -->
       <div class="td-metrics">
-        <div class="td-metric ${slaClass}">
-          <div class="label">1st delivery</div>
-          <div class="value">${fmtMin(firstMin)}</div>
-          <div class="hint">${delivered ? "creation → first DONE / Waiting" : "still in progress"}</div>
+        <div class="td-metric-combo">
+          <div class="td-combo-title">Design time</div>
+          <div class="td-combo-inner">
+            <div class="td-sub-metric ${slaClass}">
+              <div class="label">1st delivery ${slaBadge}</div>
+              <div class="value">${fmtMin(firstMin)}</div>
+              <div class="hint">target ${Math.round(target/60)}h biz · ${isSpecs ? "CAMP w/ specs" : "everything else"}</div>
+            </div>
+            <div class="td-sub-divider"></div>
+            <div class="td-sub-metric ${effortClass}">
+              <div class="label">Design effort</div>
+              <div class="value">${fmtMin(row.designLastMin)}</div>
+              <div class="hint">across all corrections · median ${fmtMin(medianEffort)}</div>
+            </div>
+          </div>
         </div>
-        <div class="td-metric ${effortClass}">
-          <div class="label">Design effort</div>
-          <div class="value">${fmtMin(row.designLastMin)}</div>
-          <div class="hint">across all corrections · median ${fmtMin(medianEffort)}</div>
+        <div class="td-metric-combo">
+          <div class="td-combo-title">Customer time</div>
+          <div class="td-combo-inner">
+            <div class="td-sub-metric ${waitClass}">
+              <div class="label">Waiting for customer</div>
+              <div class="value">${fmtMin(customerSideMin)}</div>
+              <div class="hint">incl. intermediate Done · median ${fmtMin(medianWait)}</div>
+            </div>
+            <div class="td-sub-divider"></div>
+            <div class="td-sub-metric ${roundsClass}">
+              <div class="label">Rounds with customer</div>
+              <div class="value">${row.doneVisits != null ? row.doneVisits : "—"}</div>
+              <div class="hint">times in DONE · median ${medianRounds != null ? medianRounds : "—"}</div>
+            </div>
+          </div>
         </div>
         <div class="td-metric ${totalClass}">
           <div class="label">Total time</div>
           <div class="value">${fmtMin(row.totalMin)}</div>
-          <div class="hint">creation → last DONE · median ${fmtMin(medianTotal)}</div>
-        </div>
-        <div class="td-metric ${waitClass}">
-          <div class="label">Waiting for customer</div>
-          <div class="value">${fmtMin(customerSideMin)}</div>
-          <div class="hint">incl. intermediate Done · median ${fmtMin(medianWait)}</div>
-        </div>
-        <div class="td-metric ${roundsClass}">
-          <div class="label">Rounds with customer</div>
-          <div class="value">${row.doneVisits != null ? row.doneVisits : "—"}</div>
-          <div class="hint">times in DONE · median ${medianRounds != null ? medianRounds : "—"}</div>
-        </div>
-        <div class="td-metric ${slaClass}">
-          <div class="label">Within SLA</div>
-          <div class="value">${slaCell}</div>
-          <div class="hint">target ${Math.round(target/60)}h biz · ${isSpecs ? "CAMP w/ specs" : "everything else"}</div>
+          <div class="hint">design + customer · median ${fmtMin(medianTotal)}</div>
         </div>
         <div class="td-metric ${specsClass}">
           <div class="label">Specs</div>
