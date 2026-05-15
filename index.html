@@ -657,6 +657,18 @@
       letter-spacing: 0.08em; text-transform: uppercase;
     }
     .ticket-detail .td-history-toggle:hover { border-color: var(--coral); color: var(--white); }
+    .ticket-detail .td-actions {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    }
+    .ticket-detail .td-actions .wildcard-btn { padding: 6px 14px; font-size: 11px; }
+    .modal-context {
+      font-size: 12px; color: var(--grey-1);
+      padding: 8px 10px; border-radius: 6px;
+      background: rgba(255,255,255,0.03);
+      margin-bottom: 14px; line-height: 1.45;
+    }
+    .modal-context strong { color: var(--coral); font-weight: 500; }
+    .modal-context:empty { display: none; }
     .ticket-detail .td-history {
       margin-top: 14px; border-top: 1px solid var(--card-border); padding-top: 14px;
       display: none;
@@ -1493,14 +1505,6 @@
       </div>
       </details>
 
-      <!-- Wild card: high-priority alert opened by Country Managers only. -->
-      <div class="wildcard-cta">
-        <button id="btnWildcard" class="wildcard-btn" type="button" title="Send a high-priority design alert">
-          <span class="wc-icon" aria-hidden="true">🚨</span>
-          <span>Wild card</span>
-        </button>
-        <div class="wildcard-hint">For urgent alerts on a ticket · limited uses</div>
-      </div>
     </main>
 
     <!-- Wild-card modal. mailto: keeps the recipient hidden from the UI; it
@@ -1512,14 +1516,20 @@
           <button class="modal-close" id="wcClose" type="button" aria-label="Close">×</button>
         </div>
         <div class="modal-note">Only country managers · limited monthly uses</div>
+        <div class="modal-context" id="wcContext"></div>
         <form id="wcForm" class="modal-body">
           <label class="modal-field">
-            <span>Subject</span>
-            <input id="wcSubject" type="text" required maxlength="120"
-                   placeholder="e.g. SDS-21264 needs maximum priority" />
+            <span>Your name *</span>
+            <input id="wcName" type="text" required maxlength="80"
+                   placeholder="e.g. María García · CM Spain" />
           </label>
           <label class="modal-field">
-            <span>Message</span>
+            <span>Subject</span>
+            <input id="wcSubject" type="text" maxlength="120"
+                   placeholder="optional · e.g. needs maximum priority" />
+          </label>
+          <label class="modal-field">
+            <span>Message *</span>
             <textarea id="wcBody" required rows="6"
                       placeholder="Please describe what concerns you — e.g. max priority, ticket stuck for X days, escalation needed, key client deadline at risk…"></textarea>
           </label>
@@ -2685,46 +2695,99 @@ They still appear in the ticket table below.`;
   }
 
   /* ===================== WILD CARD =====================
-     Opens a modal so a Country Manager can fire a high-priority alert about
-     a ticket. The recipient address never appears in the DOM — it lives only
-     inside the submit handler below. We hand off via mailto: so we don't have
-     to operate an SMTP relay. */
+     The button lives inside the ticket detail panel — opening the modal
+     primes it with the active ticket's metadata (HVC, Budget, Operator
+     Entity, Jira URL). Submit hits the Worker which fans the alert out to
+     Slack and email; the recipient address is never exposed in the DOM. */
+  const WILDCARD = { ticketKey: null, row: null, jiraFields: null };
+
   function setupWildcard() {
-    const open  = $("btnWildcard");
-    const modal = $("wildcardModal");
-    const close = $("wcClose");
+    const modal  = $("wildcardModal");
+    const close  = $("wcClose");
     const cancel = $("wcCancel");
-    const form  = $("wcForm");
-    if (!open || !modal) return;
-    const show = () => {
-      modal.hidden = false;
-      $("wcSubject").focus();
-    };
-    const hide = () => {
-      modal.hidden = true;
-      form.reset();
-    };
-    open.addEventListener("click", show);
+    const form   = $("wcForm");
+    if (!modal) return;
+    const hide = () => { modal.hidden = true; form.reset(); };
     close.addEventListener("click", hide);
     cancel.addEventListener("click", hide);
     modal.addEventListener("click", (e) => { if (e.target === modal) hide(); });
     document.addEventListener("keydown", (e) => {
       if (!modal.hidden && e.key === "Escape") hide();
     });
-    form.addEventListener("submit", (e) => {
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      const name    = $("wcName").value.trim();
       const subject = $("wcSubject").value.trim();
       const body    = $("wcBody").value.trim();
-      if (!subject || !body) return;
-      // Recipient is intentionally hard-coded here, not exposed anywhere in
-      // the rendered UI (no mailto links visible to readers of the page).
-      const TO = ["design", "alert"].join("_") + "@seedtag.com";
-      const url = "mailto:" + encodeURIComponent(TO)
-        + "?subject=" + encodeURIComponent("[Wild card] " + subject)
-        + "&body="    + encodeURIComponent(body);
-      window.location.href = url;
-      hide();
+      if (!name || !body) return;
+      const submitBtn = form.querySelector(".modal-primary");
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Sending…";
+      // Pull the ticket context that was pre-populated when the modal opened.
+      const r  = WILDCARD.row || {};
+      const jf = WILDCARD.jiraFields || {};
+      const payload = {
+        ticketKey: WILDCARD.ticketKey,
+        ticketUrl: "https://seedtag.atlassian.net/browse/" + WILDCARD.ticketKey,
+        summary:   r.summary || "",
+        market:    jf.operator_entity || r.market || "",
+        hvc:       jf.high_value || null,
+        budget:    jf.budget_sds || null,
+        senderName: name,
+        subject,
+        body,
+      };
+      try {
+        const res = await fetch(CONFIG.API_BASE + "/api/wildcard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        // Open the email client too — the user can review/edit before sending.
+        const TO = ["design", "alert"].join("_") + "@seedtag.com";
+        const emailLines = [
+          body, "",
+          `— ${name}`,
+          "",
+          `Ticket: ${payload.ticketUrl}`,
+          payload.summary ? `Summary: ${payload.summary}` : "",
+          payload.market  ? `Operator Entity: ${payload.market}` : "",
+          payload.hvc     ? `HVC: ${payload.hvc}` : "",
+          payload.budget  ? `Budget (SDS): ${payload.budget}` : "",
+        ].filter(Boolean).join("\n");
+        const mailUrl = "mailto:" + encodeURIComponent(TO)
+          + "?subject=" + encodeURIComponent("[Wild card] " + (subject || `${WILDCARD.ticketKey} · ${name}`))
+          + "&body="    + encodeURIComponent(emailLines);
+        window.location.href = mailUrl;
+        hide();
+      } catch (err) {
+        alert("Could not send alert: " + err.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Send alert";
+      }
     });
+  }
+
+  // Opens the modal pre-populated with the active ticket's metadata. The
+  // wildcardOpen handler in openTicketDetail wires this up after the live
+  // Jira fetch completes (so HVC + Budget + Operator Entity are accurate).
+  function openWildcardFor(key, row, jiraFields) {
+    WILDCARD.ticketKey  = key;
+    WILDCARD.row        = row;
+    WILDCARD.jiraFields = jiraFields || {};
+    const modal = $("wildcardModal");
+    const ctx   = $("wcContext");
+    if (!modal || !ctx) return;
+    const bits = [];
+    bits.push(`<strong>${escapeHtml(key)}</strong>`);
+    if (row.market) bits.push(`Operator Entity <strong>${escapeHtml(row.market)}</strong>`);
+    if ((jiraFields || {}).high_value) bits.push(`HVC <strong>${escapeHtml(jiraFields.high_value)}</strong>`);
+    if ((jiraFields || {}).budget_sds) bits.push(`Budget <strong>${escapeHtml(jiraFields.budget_sds)}</strong>`);
+    ctx.innerHTML = bits.join(" · ");
+    modal.hidden = false;
+    setTimeout(() => $("wcName").focus(), 50);
   }
 
   /* ===================== TICKET LOOKUP =====================
@@ -2858,12 +2921,28 @@ They still appear in the ticket table below.`;
           <div class="td-meta-title">Loading metadata from Jira…</div>
         </div>
       </div>
-      <button class="td-history-toggle" id="tdHistToggle">Show history + comments ▾</button>
+      <div class="td-actions">
+        <button class="td-history-toggle" id="tdHistToggle">Show history + comments ▾</button>
+        <button class="wildcard-btn" id="tdWildcard" type="button"
+                title="Send a high-priority design alert about this ticket">
+          <span class="wc-icon" aria-hidden="true">🚨</span>
+          <span>Wild card</span>
+        </button>
+      </div>
       <div class="td-history" id="tdHistBody">
         <div class="hint" style="color:var(--grey-3); font-size:12px;">Loading…</div>
       </div>
     `;
     $("tdClose").addEventListener("click", () => { detail.style.display = "none"; });
+    // Wild card alert button uses the row + the live Jira fields once they
+    // arrive (so HVC / Budget / Operator Entity reach the modal context).
+    const wcBtn = $("tdWildcard");
+    if (wcBtn) {
+      wcBtn.addEventListener("click", () => {
+        const jf = (issuePayload && issuePayload.jiraFields) || {};
+        openWildcardFor(key, row, jf);
+      });
+    }
 
     // Fetch the live Jira data right away so the metadata grid populates
     // without waiting for "Show history". The same payload also feeds the
