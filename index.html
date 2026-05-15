@@ -833,7 +833,9 @@
       <!-- KPIs -->
       <div class="section-marker">K E Y &nbsp; M E T R I C S <span id="excludedNote" class="excluded-note" style="display:none"></span></div>
       <div class="kpi-grid">
-        <!-- Unified pipeline card: delivered (CAMP / PROP) + in progress (ACTIVE / WAITING). -->
+        <!-- Row 1: pipeline counts (delivered + in progress) on the left, SLA
+             compliance on the right. HTML order matters because the grid
+             relies on auto-flow to place items in the next available cell. -->
         <div class="kpi pipeline-card">
           <div class="pipeline-half">
             <div class="label">Tickets delivered</div>
@@ -849,7 +851,12 @@
             <div class="sub">in design + waiting customer</div>
           </div>
         </div>
-        <!-- Time-to-delivery card: 3 medians, all split by CAMP / PROP.
+        <div class="kpi sla-card">
+          <div class="label">SLA compliance</div>
+          <div class="split sla-split" id="kpiSlaComplianceSplit"></div>
+          <div class="sub">delivered within target time</div>
+        </div>
+        <!-- Row 2: time medians (full row width). 3 sections, CAMP / PROP split.
              1. SLA clock (creation → first delivery, excludes waiting/done).
              2. Total design effort across corrections (excludes waiting/done).
              3. Calendar time creation → last DONE (includes everything). -->
@@ -871,11 +878,6 @@
             <div class="split sla-split" id="kpiTotalSplit"></div>
             <div class="sub">includes waiting + corrections</div>
           </div>
-        </div>
-        <div class="kpi sla-card">
-          <div class="label">SLA compliance</div>
-          <div class="split sla-split" id="kpiSlaComplianceSplit"></div>
-          <div class="sub">delivered within target time</div>
         </div>
       </div>
 
