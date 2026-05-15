@@ -796,6 +796,42 @@
       border-radius: 14px;
       overflow: hidden;
     }
+    /* Collapsible wrapper used for In-progress + Tickets-in-scope. Collapsed
+       by default so the cards above stay the focal point — click to expand. */
+    .table-collapse { margin-bottom: 24px; }
+    .table-collapse > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 14px 18px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      display: flex; align-items: center; gap: 16px;
+      transition: border-color .15s, background .15s;
+    }
+    .table-collapse > summary::-webkit-details-marker { display: none; }
+    .table-collapse > summary:hover { border-color: var(--coral); }
+    .table-collapse[open] > summary {
+      border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+      margin-bottom: -1px;
+    }
+    .table-collapse .collapse-title {
+      font-size: 14px; font-weight: 500; color: var(--white);
+    }
+    .table-collapse .collapse-hint {
+      font-size: 11px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.14em;
+      margin-left: auto;
+    }
+    .table-collapse .collapse-chev {
+      color: var(--grey-3); font-size: 12px;
+      transition: transform .15s;
+    }
+    .table-collapse[open] .collapse-chev { transform: rotate(180deg); color: var(--coral); }
+    /* When the details is open, round only the bottom corners of the inner card. */
+    .table-collapse[open] > .table-card {
+      border-top-left-radius: 0; border-top-right-radius: 0;
+    }
     .table-card .header-row {
       padding: 18px 22px 14px;
       display: flex; align-items: center; justify-content: space-between;
@@ -1268,9 +1304,15 @@
         </div>
       </div>
 
-      <!-- In progress tickets -->
+      <!-- In progress tickets (collapsed by default — click the header to expand). -->
       <div class="section-marker">I N &nbsp; P R O G R E S S &nbsp; · &nbsp; A L L &nbsp; F I L T E R S</div>
-      <div class="table-card" style="margin-bottom: 24px;">
+      <details class="table-collapse" id="inProgressCollapse">
+        <summary class="table-collapse-summary">
+          <span class="collapse-title">In progress tickets</span>
+          <span class="collapse-hint" id="inProgressSubCollapsed">click to expand</span>
+          <span class="collapse-chev">▾</span>
+        </summary>
+        <div class="table-card" style="margin-bottom: 24px;">
         <div class="header-row">
           <div>
             <h3>In progress tickets</h3>
@@ -1300,9 +1342,16 @@
           </table>
         </div>
       </div>
+      </details>
 
-      <!-- Table -->
+      <!-- Tickets table (collapsed by default — click the header to expand). -->
       <div class="section-marker">T I C K E T S</div>
+      <details class="table-collapse" id="ticketsCollapse">
+        <summary class="table-collapse-summary">
+          <span class="collapse-title">Tickets in scope</span>
+          <span class="collapse-hint" id="ticketsSubCollapsed">click to expand</span>
+          <span class="collapse-chev">▾</span>
+        </summary>
       <div class="table-card">
         <div class="header-row">
           <div>
@@ -1333,6 +1382,7 @@
           </table>
         </div>
       </div>
+      </details>
     </main>
 
     <footer class="app-footer">
@@ -2038,6 +2088,10 @@ They still appear in the ticket table below.`;
     });
 
     $("tableSub").textContent = `${sorted.length.toLocaleString()} tickets · click a row for status history`;
+    // Mirror the count into the collapsed summary so the user can see scope
+    // size without expanding the panel.
+    const ts = $("ticketsSubCollapsed");
+    if (ts) ts.textContent = `${sorted.length.toLocaleString()} tickets`;
   }
 
   function parseMinFromInput(v) {
@@ -2254,6 +2308,8 @@ They still appear in the ticket table below.`;
       return true;
     });
     $("inProgressSub").textContent = `${filtered.length.toLocaleString()} tickets · respects operator entity + date filters`;
+    const ips = $("inProgressSubCollapsed");
+    if (ips) ips.textContent = `${filtered.length.toLocaleString()} tickets`;
     tbody.innerHTML = filtered.slice(0, 500).map(r => `
       <tr class="row" data-key="${escapeHtml(r.key)}">
         <td class="key-cell"><a href="https://seedtag.atlassian.net/browse/${escapeHtml(r.key)}" target="_blank" rel="noopener">${escapeHtml(r.key)}</a></td>
