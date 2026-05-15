@@ -2509,7 +2509,15 @@ They still appear in the ticket table below.`;
     const matches = tbl.filter(r => {
       return (r.key || "").toLowerCase().includes(ql)
           || (r.summary || "").toLowerCase().includes(ql);
-    }).slice(0, 15);
+    })
+    // Newest first so the most recent ticket matching the query shows up at
+    // the top — same intuition as Jira's default sort.
+    .sort((a, b) => {
+      const ta = a.createdAt ? +new Date(a.createdAt) : 0;
+      const tb = b.createdAt ? +new Date(b.createdAt) : 0;
+      return tb - ta;
+    })
+    .slice(0, 15);
     if (!matches.length) {
       results.innerHTML = `<div class="ticket-search-empty">No tickets match "${escapeHtml(query)}" — try a different keyword or paste an SDS-XXXX key.</div>`;
       return;
