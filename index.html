@@ -621,11 +621,14 @@
     }
     .ticket-detail .td-close:hover { color: var(--white); border-color: var(--coral); }
     .ticket-detail .td-metrics {
-      display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
       margin-bottom: 16px;
     }
-    @media (max-width: 900px) {
-      .ticket-detail .td-metrics { grid-template-columns: repeat(2, 1fr); }
+    @media (max-width: 1300px) { .ticket-detail .td-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 900px)  {
+      .ticket-detail .td-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .ticket-result { grid-template-columns: 80px 1fr; row-gap: 4px; }
       .ticket-result .tr-meta { grid-column: 2; }
     }
@@ -2567,12 +2570,17 @@ They still appear in the ticket table below.`;
         <div class="td-metric">
           <div class="label">1st delivery</div>
           <div class="value">${fmtMin(firstMin)}</div>
-          <div class="hint">${delivered ? "creation → first DONE / Waiting" : "still in progress · running clock"}</div>
+          <div class="hint">${delivered ? "creation → first DONE / Waiting" : "still in progress"}</div>
         </div>
         <div class="td-metric">
           <div class="label">Design effort</div>
           <div class="value">${fmtMin(row.designLastMin)}</div>
           <div class="hint">across all corrections</div>
+        </div>
+        <div class="td-metric">
+          <div class="label">Total time</div>
+          <div class="value">${fmtMin(row.totalMin)}</div>
+          <div class="hint">creation → last DONE · incl. waiting</div>
         </div>
         <div class="td-metric">
           <div class="label">Waiting for customer</div>
