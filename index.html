@@ -392,15 +392,26 @@
       margin-left: 2px;
     }
 
-    /* KPIs */
+    /* KPIs — 2-row layout:
+         row 1: pipeline (delivered + in progress) | SLA compliance
+         row 2: time medians (1st delivery / total effort / creation→done)
+       Pipeline gets 2/3 of the row, SLA 1/3; the time card spans the full
+       row so its three internal sections each get the same width as a
+       regular card column. */
     .kpi-grid {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
       gap: 14px;
       margin-bottom: 36px;
     }
+    .kpi-grid > .kpi.pipeline-card:not(.time-card) { grid-column: span 4; }
+    .kpi-grid > .kpi.sla-card                      { grid-column: span 2; }
+    .kpi-grid > .kpi.pipeline-card.time-card        { grid-column: span 6; }
     @media (max-width: 1400px) {
       .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+      .kpi-grid > .kpi.pipeline-card:not(.time-card) { grid-column: span 2; }
+      .kpi-grid > .kpi.sla-card                      { grid-column: span 1; }
+      .kpi-grid > .kpi.pipeline-card.time-card        { grid-column: span 3; }
     }
     .kpi {
       background: var(--card);
@@ -490,14 +501,16 @@
       letter-spacing: 0.02em;
     }
     /* Time-card holds 3 halves (1st delivery / total effort / creation→done)
-       instead of the 2 in the pipeline-card. Tighter typography keeps the
-       pills readable across all three columns. */
+       instead of the 2 in the pipeline-card. The card now spans the full
+       row so each half has plenty of width — typography can stay generous. */
     .kpi.pipeline-card.time-card {
       grid-template-columns: 1fr 1px 1fr 1px 1fr;
-      gap: 18px;
+      gap: 28px;
     }
-    .kpi.pipeline-card.time-card .sla-pill strong.big { font-size: 22px; }
-    .kpi.pipeline-card.time-card .sla-pill { grid-template-columns: 44px 1fr; column-gap: 10px; }
+    .kpi.pipeline-card.time-card .sla-pill strong.big { font-size: 28px; }
+    .kpi.pipeline-card.time-card .sla-pill { grid-template-columns: 56px 1fr; column-gap: 12px; }
+    /* Labels in the time-card need a bit more room to fit on one line. */
+    .kpi.pipeline-card.time-card .pipeline-half > .label { white-space: nowrap; }
 
     /* Charts */
     .charts-grid {
@@ -842,21 +855,21 @@
              3. Calendar time creation → last DONE (includes everything). -->
         <div class="kpi pipeline-card time-card">
           <div class="pipeline-half">
-            <div class="label">Median time to<br>1st delivery (SLA)</div>
+            <div class="label">Median · 1st delivery (SLA)</div>
             <div class="split sla-split" id="kpiDesignFirstSplit"></div>
-            <div class="sub">creation → first DONE, business hours</div>
+            <div class="sub">creation → first DONE</div>
           </div>
           <div class="pipeline-divider"></div>
           <div class="pipeline-half">
-            <div class="label">Median total<br>design effort</div>
+            <div class="label">Median · total design effort</div>
             <div class="split sla-split" id="kpiDesignLastSplit"></div>
-            <div class="sub">incl. rework after corrections</div>
+            <div class="sub">includes rework after corrections</div>
           </div>
           <div class="pipeline-divider"></div>
           <div class="pipeline-half">
-            <div class="label">Median creation<br>→ last DONE</div>
+            <div class="label">Median · creation → last DONE</div>
             <div class="split sla-split" id="kpiTotalSplit"></div>
-            <div class="sub">incl. waiting + corrections</div>
+            <div class="sub">includes waiting + corrections</div>
           </div>
         </div>
         <div class="kpi sla-card">
