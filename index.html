@@ -968,6 +968,115 @@
     }
     footer .meta { font-size: 11px; color: var(--grey-3); letter-spacing: 0.06em; }
 
+    /* Wild card alert: centered call-to-action at the bottom of the dashboard
+       plus a modal that prepares a mailto: message. The recipient address
+       lives only inside the submit handler so it never appears in the UI. */
+    .wildcard-cta {
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      margin: 48px 0 32px;
+    }
+    .wildcard-btn {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 12px 22px; border-radius: 999px;
+      background: rgba(255,107,124,0.10);
+      border: 1px solid var(--coral);
+      color: var(--coral);
+      font: inherit; font-size: 13px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      cursor: pointer;
+      transition: background .15s, color .15s, transform .15s;
+    }
+    .wildcard-btn:hover {
+      background: var(--coral); color: var(--white);
+      transform: translateY(-1px);
+    }
+    .wildcard-btn .wc-icon { font-size: 16px; }
+    .wildcard-hint {
+      font-size: 10px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.18em;
+    }
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(8,8,10,0.72);
+      backdrop-filter: blur(6px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+      padding: 24px;
+    }
+    .modal-backdrop[hidden] { display: none; }
+    .modal-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      width: 100%; max-width: 520px;
+    }
+    .modal-head {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 16px; margin-bottom: 6px;
+    }
+    .modal-head h3 {
+      font-size: 18px; font-weight: 500; color: var(--white);
+      letter-spacing: -0.01em;
+    }
+    .modal-close {
+      background: transparent; border: none; color: var(--grey-3);
+      font-size: 22px; cursor: pointer; line-height: 1;
+      padding: 4px 8px; border-radius: 999px;
+    }
+    .modal-close:hover { color: var(--coral); background: rgba(255,107,124,0.08); }
+    .modal-note {
+      font-size: 10px; color: var(--coral);
+      text-transform: uppercase; letter-spacing: 0.18em;
+      margin-bottom: 16px;
+      padding: 6px 10px; border-radius: 6px;
+      background: rgba(255,107,124,0.08);
+      display: inline-block;
+    }
+    .modal-field {
+      display: flex; flex-direction: column; gap: 4px;
+      margin-bottom: 14px;
+    }
+    .modal-field span {
+      font-size: 10px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.14em;
+    }
+    .modal-field input,
+    .modal-field textarea {
+      width: 100%; padding: 10px 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      color: var(--white);
+      font: inherit; font-size: 13px;
+      resize: vertical;
+    }
+    .modal-field input:focus,
+    .modal-field textarea:focus {
+      outline: none; border-color: var(--coral);
+    }
+    .modal-actions {
+      display: flex; justify-content: flex-end; gap: 10px;
+      margin-top: 4px;
+    }
+    .modal-secondary,
+    .modal-primary {
+      padding: 10px 18px; border-radius: 999px;
+      font: inherit; font-size: 12px; font-weight: 500;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      cursor: pointer; transition: background .15s, color .15s;
+    }
+    .modal-secondary {
+      background: transparent; border: 1px solid var(--grey-5);
+      color: var(--grey-1);
+    }
+    .modal-secondary:hover { border-color: var(--coral); color: var(--white); }
+    .modal-primary {
+      background: var(--coral); border: 1px solid var(--coral);
+      color: var(--white);
+    }
+    .modal-primary:hover { background: #ff8a99; }
+
     /* Responsive */
     @media (max-width: 1300px) {
       /* Below ~1300px the charts get too cramped two-up — fall to one column. */
@@ -1383,7 +1492,44 @@
         </div>
       </div>
       </details>
+
+      <!-- Wild card: high-priority alert opened by Country Managers only. -->
+      <div class="wildcard-cta">
+        <button id="btnWildcard" class="wildcard-btn" type="button" title="Send a high-priority design alert">
+          <span class="wc-icon" aria-hidden="true">🚨</span>
+          <span>Wild card</span>
+        </button>
+        <div class="wildcard-hint">For urgent alerts on a ticket · limited uses</div>
+      </div>
     </main>
+
+    <!-- Wild-card modal. mailto: keeps the recipient hidden from the UI; it
+         only shows when the user's mail client opens the composed message. -->
+    <div class="modal-backdrop" id="wildcardModal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="wcTitle">
+        <div class="modal-head">
+          <h3 id="wcTitle">Wild card alert</h3>
+          <button class="modal-close" id="wcClose" type="button" aria-label="Close">×</button>
+        </div>
+        <div class="modal-note">Only country managers · limited monthly uses</div>
+        <form id="wcForm" class="modal-body">
+          <label class="modal-field">
+            <span>Subject</span>
+            <input id="wcSubject" type="text" required maxlength="120"
+                   placeholder="e.g. SDS-21264 needs maximum priority" />
+          </label>
+          <label class="modal-field">
+            <span>Message</span>
+            <textarea id="wcBody" required rows="6"
+                      placeholder="Please describe what concerns you — e.g. max priority, ticket stuck for X days, escalation needed, key client deadline at risk…"></textarea>
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="modal-secondary" id="wcCancel">Cancel</button>
+            <button type="submit" class="modal-primary">Send alert</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <footer class="app-footer">
       <div class="wordmark-footer">SEEDTAG</div>
@@ -2535,6 +2681,50 @@ They still appear in the ticket table below.`;
       const h = $("adminColHeader"); if (h) h.style.display = "";
     }
     setupTicketSearch();
+    setupWildcard();
+  }
+
+  /* ===================== WILD CARD =====================
+     Opens a modal so a Country Manager can fire a high-priority alert about
+     a ticket. The recipient address never appears in the DOM — it lives only
+     inside the submit handler below. We hand off via mailto: so we don't have
+     to operate an SMTP relay. */
+  function setupWildcard() {
+    const open  = $("btnWildcard");
+    const modal = $("wildcardModal");
+    const close = $("wcClose");
+    const cancel = $("wcCancel");
+    const form  = $("wcForm");
+    if (!open || !modal) return;
+    const show = () => {
+      modal.hidden = false;
+      $("wcSubject").focus();
+    };
+    const hide = () => {
+      modal.hidden = true;
+      form.reset();
+    };
+    open.addEventListener("click", show);
+    close.addEventListener("click", hide);
+    cancel.addEventListener("click", hide);
+    modal.addEventListener("click", (e) => { if (e.target === modal) hide(); });
+    document.addEventListener("keydown", (e) => {
+      if (!modal.hidden && e.key === "Escape") hide();
+    });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const subject = $("wcSubject").value.trim();
+      const body    = $("wcBody").value.trim();
+      if (!subject || !body) return;
+      // Recipient is intentionally hard-coded here, not exposed anywhere in
+      // the rendered UI (no mailto links visible to readers of the page).
+      const TO = ["design", "alert"].join("_") + "@seedtag.com";
+      const url = "mailto:" + encodeURIComponent(TO)
+        + "?subject=" + encodeURIComponent("[Wild card] " + subject)
+        + "&body="    + encodeURIComponent(body);
+      window.location.href = url;
+      hide();
+    });
   }
 
   /* ===================== TICKET LOOKUP =====================
