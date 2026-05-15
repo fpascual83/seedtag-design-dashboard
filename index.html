@@ -659,18 +659,78 @@
       display: none;
     }
     .ticket-detail.show-history .td-history { display: block; }
-    .ticket-detail .td-history table {
-      width: 100%; border-collapse: collapse; font-size: 12px;
+    /* Metadata grid: Routing / Design / Sales / Commercial */
+    .ticket-detail .td-meta-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+      margin: 16px 0;
     }
-    .ticket-detail .td-history th,
-    .ticket-detail .td-history td {
-      padding: 6px 10px; text-align: left;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-      color: var(--grey-1);
+    @media (max-width: 1100px) { .ticket-detail .td-meta-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 600px)  { .ticket-detail .td-meta-grid { grid-template-columns: 1fr; } }
+    .ticket-detail .td-meta-section {
+      padding: 12px 14px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
     }
-    .ticket-detail .td-history th {
-      color: var(--grey-3); font-weight: 500;
-      text-transform: uppercase; letter-spacing: 0.12em; font-size: 10px;
+    .ticket-detail .td-meta-title {
+      font-size: 9px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.18em;
+      margin-bottom: 10px;
+    }
+    .ticket-detail .td-meta-row {
+      display: flex; flex-direction: column; margin-bottom: 8px;
+    }
+    .ticket-detail .td-meta-row:last-child { margin-bottom: 0; }
+    .ticket-detail .td-meta-label {
+      font-size: 10px; color: var(--grey-3);
+      letter-spacing: 0.04em;
+    }
+    .ticket-detail .td-meta-value {
+      font-size: 13px; color: var(--white); margin-top: 2px;
+    }
+    /* History + comments timeline */
+    .ticket-detail .td-history-list {
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .ticket-detail .td-seg {
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+    }
+    .ticket-detail .td-seg-head {
+      display: grid; grid-template-columns: 160px 1fr auto; gap: 14px;
+      align-items: baseline;
+    }
+    .ticket-detail .td-seg-status {
+      color: var(--coral); font-weight: 500; font-size: 13px;
+    }
+    .ticket-detail .td-seg-range {
+      color: var(--grey-3); font-size: 11px; letter-spacing: 0.04em;
+    }
+    .ticket-detail .td-seg-bm {
+      color: var(--grey-1); font-size: 12px;
+    }
+    .ticket-detail .td-comments {
+      margin-top: 10px; padding-top: 10px;
+      border-top: 1px dashed rgba(255,255,255,0.06);
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .ticket-detail .td-comment {
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.02);
+      border-left: 2px solid var(--coral);
+      border-radius: 0 6px 6px 0;
+    }
+    .ticket-detail .td-c-head {
+      display: flex; justify-content: space-between; gap: 8px;
+      font-size: 11px; margin-bottom: 4px;
+    }
+    .ticket-detail .td-c-head strong { color: var(--white); font-weight: 500; }
+    .ticket-detail .td-c-head span { color: var(--grey-3); }
+    .ticket-detail .td-c-body {
+      color: var(--grey-1); font-size: 13px; line-height: 1.4;
+      white-space: pre-wrap;
     }
 
     /* Charts */
@@ -2470,7 +2530,10 @@ They still appear in the ticket table below.`;
     const tbl = (STATE.data && STATE.data.table) || [];
     const row = tbl.find(r => r.key === key);
     const detail = $("ticketDetail");
+    const results = $("ticketSearchResults");
     if (!row || !detail) return;
+    // Collapse the result list — the detail card takes over the focus.
+    if (results) results.innerHTML = "";
     // Resolve SLA verdict locally so the card is consistent with the KPI cards.
     const slaPeriod = (firstAt) => {
       const d = (firstAt || row.createdAt || "").slice(0,10);
@@ -2503,7 +2566,7 @@ They still appear in the ticket table below.`;
       <div class="td-metrics">
         <div class="td-metric">
           <div class="label">1st delivery</div>
-          <div class="value">${fmtMin(firstMin) || "—"}</div>
+          <div class="value">${fmtMin(firstMin)}</div>
           <div class="hint">${delivered ? "creation → first DONE / Waiting" : "still in progress · running clock"}</div>
         </div>
         <div class="td-metric">
@@ -2527,49 +2590,127 @@ They still appear in the ticket table below.`;
           <div class="hint">${escapeHtml(row.market || "—")} · created ${dateShort(row.createdAt)}</div>
         </div>
       </div>
-      <button class="td-history-toggle" id="tdHistToggle">Show history ▾</button>
+      <!-- Extra metadata is fetched live from Jira so it's always current. -->
+      <div class="td-meta-grid" id="tdMetaGrid">
+        <div class="td-meta-section">
+          <div class="td-meta-title">Loading metadata from Jira…</div>
+        </div>
+      </div>
+      <button class="td-history-toggle" id="tdHistToggle">Show history + comments ▾</button>
       <div class="td-history" id="tdHistBody">
         <div class="hint" style="color:var(--grey-3); font-size:12px;">Loading…</div>
       </div>
     `;
     $("tdClose").addEventListener("click", () => { detail.style.display = "none"; });
-    $("tdHistToggle").addEventListener("click", async () => {
+
+    // Fetch the live Jira data right away so the metadata grid populates
+    // without waiting for "Show history". The same payload also feeds the
+    // history view when the user expands it.
+    let issuePayload = null;
+    (async () => {
+      try {
+        issuePayload = await fetchIssue(key);
+        renderTicketMeta(issuePayload, row);
+      } catch (e) {
+        const mg = $("tdMetaGrid");
+        if (mg) mg.innerHTML = `<div class="td-meta-section"><div class="td-meta-title" style="color:var(--coral)">Could not load metadata: ${escapeHtml(e.message)}</div></div>`;
+      }
+    })();
+
+    $("tdHistToggle").addEventListener("click", () => {
       const open = detail.classList.toggle("show-history");
-      $("tdHistToggle").textContent = open ? "Hide history ▴" : "Show history ▾";
-      if (open && !detail.dataset.loaded) {
-        try {
-          const data = await fetchIssue(key);
-          renderTicketHistory(data);
-          detail.dataset.loaded = "1";
-        } catch (e) {
-          $("tdHistBody").innerHTML = `<div class="hint" style="color:var(--coral)">Could not load history: ${escapeHtml(e.message)}</div>`;
-        }
+      $("tdHistToggle").textContent = open ? "Hide history + comments ▴" : "Show history + comments ▾";
+      if (open) {
+        if (issuePayload) renderTicketHistory(issuePayload);
+        else $("tdHistBody").innerHTML = `<div class="hint" style="color:var(--grey-3)">Still loading…</div>`;
       }
     });
+  }
+
+  // Renders the metadata grid (Operator entity, Design team, Sales, plus
+  // miscellaneous Jira fields). Falls back to row data for fields not in
+  // the live Jira response (in case the fetch errored).
+  function renderTicketMeta(payload, row) {
+    const mg = $("tdMetaGrid");
+    if (!mg) return;
+    const jf = (payload && payload.jiraFields) || {};
+    const F = (label, value, hint) => `
+      <div class="td-meta-row">
+        <span class="td-meta-label">${escapeHtml(label)}</span>
+        <span class="td-meta-value">${value != null && value !== "" ? escapeHtml(String(value)) : "<span style='color:var(--grey-3)'>—</span>"}</span>
+        ${hint ? `<span class="td-meta-hint">${escapeHtml(hint)}</span>` : ""}
+      </div>`;
+    mg.innerHTML = `
+      <div class="td-meta-section">
+        <div class="td-meta-title">Routing</div>
+        ${F("Operator Entity", jf.operator_entity || row.market)}
+        ${F("Industry", jf.industry)}
+        ${F("Delivery Type", jf.delivery_type)}
+        ${F("Number of formats", jf.num_formats)}
+      </div>
+      <div class="td-meta-section">
+        <div class="td-meta-title">Design</div>
+        ${F("Brand Assignee", jf.brand_assignee)}
+        ${F("Assignee", jf.assignee)}
+        ${F("Specs", jf.seedtag_specs || row.seedtagSpecs)}
+      </div>
+      <div class="td-meta-section">
+        <div class="td-meta-title">Sales</div>
+        ${F("Sales Rep", jf.sales_rep || row.salesRep)}
+        ${F("Reporter", jf.reporter)}
+        ${F("High Value Client", jf.high_value)}
+      </div>
+      <div class="td-meta-section">
+        <div class="td-meta-title">Commercial</div>
+        ${F("Budget (SDS)", jf.budget_sds)}
+        ${F("CRM ID (SalesForce)", jf.crm_id)}
+        ${F("Request Type", jf.request_type)}
+        ${F("End Date (LTZ)", jf.end_date_ltz)}
+      </div>`;
   }
 
   function renderTicketHistory(data) {
     const body = $("tdHistBody");
     if (!body) return;
     const segs = (data && data.segments) || [];
-    if (!segs.length) { body.innerHTML = `<div class="hint">No status changes recorded.</div>`; return; }
+    const comments = (data && data.comments) || [];
+    if (!segs.length && !comments.length) {
+      body.innerHTML = `<div class="hint">No status changes or comments recorded.</div>`;
+      return;
+    }
     const fmtDate = (s) => s ? new Date(s).toLocaleString("en-GB", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" }) : "—";
+    // Bucket each comment under the status that was active when it was posted.
+    const commentsBySeg = segs.map(() => []);
+    for (const c of comments) {
+      const ts = +new Date(c.created);
+      const idx = segs.findIndex(s => ts >= +new Date(s.start) && ts < +new Date(s.end));
+      if (idx >= 0) commentsBySeg[idx].push(c);
+      else commentsBySeg[commentsBySeg.length - 1]?.push(c); // belongs to the trailing segment
+    }
     body.innerHTML = `
-      <table>
-        <thead>
-          <tr><th>Status</th><th>From</th><th>To</th><th>Biz minutes</th></tr>
-        </thead>
-        <tbody>
-          ${segs.map(s => `
-            <tr>
-              <td><strong>${escapeHtml(s.status || "—")}</strong></td>
-              <td>${fmtDate(s.start)}</td>
-              <td>${fmtDate(s.end)}</td>
-              <td>${fmtMin(s.bmTotal)}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+      <div class="td-history-list">
+        ${segs.map((s, i) => `
+          <div class="td-seg">
+            <div class="td-seg-head">
+              <span class="td-seg-status">${escapeHtml(s.status || "—")}</span>
+              <span class="td-seg-range">${fmtDate(s.start)} → ${fmtDate(s.end)}</span>
+              <span class="td-seg-bm">${fmtMin(s.bmTotal)}</span>
+            </div>
+            ${commentsBySeg[i].length ? `
+              <div class="td-comments">
+                ${commentsBySeg[i].map(c => `
+                  <div class="td-comment">
+                    <div class="td-c-head">
+                      <strong>${escapeHtml(c.author || "—")}</strong>
+                      <span>${fmtDate(c.created)}</span>
+                    </div>
+                    <div class="td-c-body">${escapeHtml(c.body || "").replace(/\n/g, "<br>")}</div>
+                  </div>
+                `).join("")}
+              </div>` : ""}
+          </div>
+        `).join("")}
+      </div>
     `;
   }
 
