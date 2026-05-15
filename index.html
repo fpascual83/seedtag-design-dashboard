@@ -525,6 +525,11 @@
       padding: 22px;
       color: var(--grey-5);
       position: relative;
+      /* CSS grid items default to min-width: auto, which means they refuse to
+         shrink below the size of their canvas content. That causes the right
+         chart card to overflow the viewport on narrow windows. */
+      min-width: 0;
+      overflow: hidden;
     }
     .chart-card.dark {
       background: var(--card);
@@ -704,9 +709,20 @@
     footer .meta { font-size: 11px; color: var(--grey-3); letter-spacing: 0.06em; }
 
     /* Responsive */
+    @media (max-width: 1300px) {
+      /* Below ~1300px the charts get too cramped two-up — fall to one column. */
+      .charts-grid { grid-template-columns: 1fr; }
+    }
     @media (max-width: 1100px) {
       .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-      .charts-grid { grid-template-columns: 1fr; }
+      .kpi-grid > .kpi.pipeline-card:not(.time-card) { grid-column: span 2; }
+      .kpi-grid > .kpi.sla-card                      { grid-column: span 2; }
+      .kpi-grid > .kpi.pipeline-card.time-card        { grid-column: span 2; }
+      .kpi.pipeline-card.time-card {
+        /* Stack the 3 time medians vertically when there's no horizontal room. */
+        grid-template-columns: 1fr;
+      }
+      .kpi.pipeline-card.time-card .pipeline-divider { display: none; }
     }
     @media (max-width: 720px) {
       header.app-header, main, footer.app-footer { padding-left: 20px; padding-right: 20px; }
@@ -918,7 +934,7 @@
             </span>
             <span class="chart-toggle metric-toggle" data-chart="operator">
               <button data-metric="volume" class="active">Volume</button>
-              <button data-metric="time">Time</button>
+              <button data-metric="time" title="Median total design effort (business hours)">Effort</button>
             </span>
           </h3>
           <div class="chart-sub">respects operator entity + date filters</div>
@@ -934,7 +950,7 @@
             </span>
             <span class="chart-toggle metric-toggle" data-chart="rep">
               <button data-metric="volume" class="active">Volume</button>
-              <button data-metric="time">Time</button>
+              <button data-metric="time" title="Median total design effort (business hours)">Effort</button>
             </span>
           </h3>
           <div class="chart-sub">top 15 reps · respects operator entity + date filters</div>
@@ -966,7 +982,7 @@
           <h3>Tickets assigned by week
             <span class="chart-toggle metric-toggle" data-chart="weekAdm">
               <button data-metric="volume" class="active">Volume</button>
-              <button data-metric="time">Time</button>
+              <button data-metric="time" title="Median total design effort (business hours)">Effort</button>
               <button data-metric="formats">Formats</button>
             </span>
           </h3>
@@ -977,7 +993,7 @@
           <h3>Tickets assigned by month
             <span class="chart-toggle metric-toggle" data-chart="monthAdm">
               <button data-metric="volume" class="active">Volume</button>
-              <button data-metric="time">Time</button>
+              <button data-metric="time" title="Median total design effort (business hours)">Effort</button>
               <button data-metric="formats">Formats</button>
             </span>
           </h3>
