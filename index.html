@@ -547,6 +547,132 @@
     /* Labels in the time-card need a bit more room to fit on one line. */
     .kpi.pipeline-card.time-card .pipeline-half > .label { white-space: nowrap; }
 
+    /* Ticket search widget */
+    .ticket-search {
+      margin-bottom: 36px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .ticket-search-input {
+      width: 100%; padding: 12px 16px;
+      background: var(--card); color: var(--white);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      font: inherit; font-size: 14px;
+      transition: border-color .15s, background .15s;
+    }
+    .ticket-search-input:focus {
+      outline: none; border-color: var(--coral);
+      background: rgba(255,107,124,0.04);
+    }
+    .ticket-search-input::placeholder { color: var(--grey-3); }
+    .ticket-search-results {
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .ticket-search-results:empty { display: none; }
+    .ticket-result {
+      display: grid;
+      grid-template-columns: 90px 1fr 110px 80px 140px;
+      gap: 16px; align-items: center;
+      padding: 10px 14px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .ticket-result:hover { border-color: var(--coral); background: rgba(255,107,124,0.04); }
+    .ticket-result .tr-key { color: var(--coral); font-weight: 500; font-size: 13px; }
+    .ticket-result .tr-summary {
+      color: var(--white); font-size: 13px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ticket-result .tr-meta {
+      font-size: 11px; color: var(--grey-3);
+      letter-spacing: 0.04em;
+    }
+    .ticket-result .tr-meta strong { color: var(--grey-1); font-weight: 500; }
+    .ticket-search-empty {
+      padding: 14px; color: var(--grey-3); font-size: 13px;
+      text-align: center;
+    }
+    /* Detail card opened when a result is clicked */
+    .ticket-detail {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 22px;
+      margin-top: 8px;
+    }
+    .ticket-detail .td-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      gap: 14px; flex-wrap: wrap; margin-bottom: 14px;
+    }
+    .ticket-detail .td-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .ticket-detail .td-key {
+      color: var(--coral); font-weight: 500; font-size: 16px;
+    }
+    .ticket-detail .td-summary {
+      color: var(--white); font-size: 14px;
+    }
+    .ticket-detail .td-close {
+      background: transparent; border: 1px solid var(--grey-5);
+      color: var(--grey-3); border-radius: 999px; padding: 4px 12px;
+      font-size: 11px; cursor: pointer;
+    }
+    .ticket-detail .td-close:hover { color: var(--white); border-color: var(--coral); }
+    .ticket-detail .td-metrics {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 900px) {
+      .ticket-detail .td-metrics { grid-template-columns: repeat(2, 1fr); }
+      .ticket-result { grid-template-columns: 80px 1fr; row-gap: 4px; }
+      .ticket-result .tr-meta { grid-column: 2; }
+    }
+    .ticket-detail .td-metric {
+      padding: 10px 12px;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+    }
+    .ticket-detail .td-metric .label {
+      font-size: 9px; color: var(--grey-3);
+      text-transform: uppercase; letter-spacing: 0.18em;
+      margin-bottom: 6px;
+    }
+    .ticket-detail .td-metric .value {
+      font-size: 16px; font-weight: 500; color: var(--white);
+    }
+    .ticket-detail .td-metric.sla-yes .value { color: #6ee59e; }
+    .ticket-detail .td-metric.sla-no  .value { color: var(--coral); }
+    .ticket-detail .td-metric .hint {
+      font-size: 10px; color: var(--grey-3); margin-top: 4px;
+    }
+    .ticket-detail .td-history-toggle {
+      background: transparent; border: 1px solid var(--grey-5);
+      color: var(--grey-1); border-radius: 999px;
+      padding: 6px 14px; font-size: 11px; cursor: pointer;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .ticket-detail .td-history-toggle:hover { border-color: var(--coral); color: var(--white); }
+    .ticket-detail .td-history {
+      margin-top: 14px; border-top: 1px solid var(--card-border); padding-top: 14px;
+      display: none;
+    }
+    .ticket-detail.show-history .td-history { display: block; }
+    .ticket-detail .td-history table {
+      width: 100%; border-collapse: collapse; font-size: 12px;
+    }
+    .ticket-detail .td-history th,
+    .ticket-detail .td-history td {
+      padding: 6px 10px; text-align: left;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      color: var(--grey-1);
+    }
+    .ticket-detail .td-history th {
+      color: var(--grey-3); font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.12em; font-size: 10px;
+    }
+
     /* Charts */
     .charts-grid {
       display: grid;
@@ -951,6 +1077,17 @@
             <div class="sub">includes waiting + corrections</div>
           </div>
         </div>
+      </div>
+
+      <!-- Quick ticket lookup. Searches the loaded table by key + summary on
+           the client. Click a row to open a detail card with live computed
+           metrics (1st delivery, design effort, waiting, SLA, full history). -->
+      <div class="section-marker">F I N D &nbsp; A &nbsp; T I C K E T</div>
+      <div class="ticket-search">
+        <input type="text" id="ticketSearch" class="ticket-search-input"
+               placeholder="Search by key (SDS-21264) or summary keyword (Lenovo, Pinterest…)" autocomplete="off" />
+        <div class="ticket-search-results" id="ticketSearchResults"></div>
+        <div class="ticket-detail" id="ticketDetail" style="display:none"></div>
       </div>
 
       <!-- Charts (public view) -->
@@ -2278,6 +2415,162 @@ They still appear in the ticket table below.`;
     if (IS_ADMIN) {
       const h = $("adminColHeader"); if (h) h.style.display = "";
     }
+    setupTicketSearch();
+  }
+
+  /* ===================== TICKET LOOKUP =====================
+     Live search over the loaded table (STATE.data.table). Click a result to
+     fetch the full per-segment breakdown from /api/issue and show a detail
+     card with the 1st-delivery clock, design effort, customer waiting, SLA
+     verdict and the optional full history. */
+  function setupTicketSearch() {
+    const input   = $("ticketSearch");
+    const results = $("ticketSearchResults");
+    if (!input || !results) return;
+    let last = "";
+    input.addEventListener("input", () => {
+      const q = input.value.trim();
+      if (q === last) return;
+      last = q;
+      renderTicketSearchResults(q);
+    });
+  }
+
+  function renderTicketSearchResults(query) {
+    const results = $("ticketSearchResults");
+    const detail  = $("ticketDetail");
+    if (!results) return;
+    if (!query) { results.innerHTML = ""; if (detail) detail.style.display = "none"; return; }
+    const tbl = (STATE.data && STATE.data.table) || [];
+    const ql = query.toLowerCase();
+    const matches = tbl.filter(r => {
+      return (r.key || "").toLowerCase().includes(ql)
+          || (r.summary || "").toLowerCase().includes(ql);
+    }).slice(0, 15);
+    if (!matches.length) {
+      results.innerHTML = `<div class="ticket-search-empty">No tickets match "${escapeHtml(query)}" — try a different keyword or paste an SDS-XXXX key.</div>`;
+      return;
+    }
+    const dateShort = (iso) => iso ? new Date(iso).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" }) : "—";
+    results.innerHTML = matches.map(r => `
+      <div class="ticket-result" data-key="${escapeHtml(r.key)}">
+        <span class="tr-key">${escapeHtml(r.key)}</span>
+        <span class="tr-summary" title="${escapeHtml(r.summary || "")}">${escapeHtml(r.summary || "—")}</span>
+        <span class="tr-meta"><strong>${escapeHtml(r.market || "—")}</strong></span>
+        <span class="tr-meta">${dateShort(r.createdAt)}</span>
+        <span class="tr-meta">${escapeHtml(r.salesRep || "Unassigned")}</span>
+      </div>
+    `).join("");
+    results.querySelectorAll(".ticket-result").forEach(el => {
+      el.addEventListener("click", () => openTicketDetail(el.dataset.key));
+    });
+  }
+
+  async function openTicketDetail(key) {
+    const tbl = (STATE.data && STATE.data.table) || [];
+    const row = tbl.find(r => r.key === key);
+    const detail = $("ticketDetail");
+    if (!row || !detail) return;
+    // Resolve SLA verdict locally so the card is consistent with the KPI cards.
+    const slaPeriod = (firstAt) => {
+      const d = (firstAt || row.createdAt || "").slice(0,10);
+      if (d >= "2026-05-11") return { fast: 8*60, slow: 16*60 };
+      if (d >= "2026-04-01") return { fast: 16*60, slow: 24*60 };
+      return { fast: 8*60, slow: 16*60 };
+    };
+    const isCamp = /_CAMP_/.test(row.summary || "");
+    const isSpecs = isCamp && row.seedtagSpecs === "Sent";
+    const target = slaPeriod(row.firstDeliveredAt)[isSpecs ? "fast" : "slow"];
+    const firstMin = row.designFirstMin;
+    const delivered = row.status && row.status.toLowerCase() === "done" || !!row.firstDeliveredAt;
+    let slaCell = '<span class="hint">in progress</span>', slaClass = "";
+    if (delivered && firstMin != null) {
+      const ok = firstMin <= target;
+      slaCell = ok ? "Yes" : "No";
+      slaClass = ok ? "sla-yes" : "sla-no";
+    }
+    const dateShort = (iso) => iso ? new Date(iso).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" }) : "—";
+    detail.classList.remove("show-history");
+    detail.style.display = "block";
+    detail.innerHTML = `
+      <div class="td-head">
+        <div class="td-title">
+          <span class="td-key">${escapeHtml(row.key)}</span>
+          <span class="td-summary">${escapeHtml(row.summary || "")}</span>
+        </div>
+        <button class="td-close" id="tdClose">close</button>
+      </div>
+      <div class="td-metrics">
+        <div class="td-metric">
+          <div class="label">1st delivery</div>
+          <div class="value">${fmtMin(firstMin) || "—"}</div>
+          <div class="hint">${delivered ? "creation → first DONE / Waiting" : "still in progress · running clock"}</div>
+        </div>
+        <div class="td-metric">
+          <div class="label">Design effort</div>
+          <div class="value">${fmtMin(row.designLastMin)}</div>
+          <div class="hint">across all corrections</div>
+        </div>
+        <div class="td-metric">
+          <div class="label">Waiting for customer</div>
+          <div class="value">${fmtMin(row.waitingMin)}</div>
+          <div class="hint">total time on customer side</div>
+        </div>
+        <div class="td-metric ${slaClass}">
+          <div class="label">Within SLA</div>
+          <div class="value">${slaCell}</div>
+          <div class="hint">target ${Math.round(target/60)}h biz · ${isSpecs ? "CAMP w/ specs" : "everything else"}</div>
+        </div>
+        <div class="td-metric">
+          <div class="label">Specs</div>
+          <div class="value">${escapeHtml(row.seedtagSpecs || "—")}</div>
+          <div class="hint">${escapeHtml(row.market || "—")} · created ${dateShort(row.createdAt)}</div>
+        </div>
+      </div>
+      <button class="td-history-toggle" id="tdHistToggle">Show history ▾</button>
+      <div class="td-history" id="tdHistBody">
+        <div class="hint" style="color:var(--grey-3); font-size:12px;">Loading…</div>
+      </div>
+    `;
+    $("tdClose").addEventListener("click", () => { detail.style.display = "none"; });
+    $("tdHistToggle").addEventListener("click", async () => {
+      const open = detail.classList.toggle("show-history");
+      $("tdHistToggle").textContent = open ? "Hide history ▴" : "Show history ▾";
+      if (open && !detail.dataset.loaded) {
+        try {
+          const data = await fetchIssue(key);
+          renderTicketHistory(data);
+          detail.dataset.loaded = "1";
+        } catch (e) {
+          $("tdHistBody").innerHTML = `<div class="hint" style="color:var(--coral)">Could not load history: ${escapeHtml(e.message)}</div>`;
+        }
+      }
+    });
+  }
+
+  function renderTicketHistory(data) {
+    const body = $("tdHistBody");
+    if (!body) return;
+    const segs = (data && data.segments) || [];
+    if (!segs.length) { body.innerHTML = `<div class="hint">No status changes recorded.</div>`; return; }
+    const fmtDate = (s) => s ? new Date(s).toLocaleString("en-GB", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" }) : "—";
+    body.innerHTML = `
+      <table>
+        <thead>
+          <tr><th>Status</th><th>From</th><th>To</th><th>Biz minutes</th></tr>
+        </thead>
+        <tbody>
+          ${segs.map(s => `
+            <tr>
+              <td><strong>${escapeHtml(s.status || "—")}</strong></td>
+              <td>${fmtDate(s.start)}</td>
+              <td>${fmtDate(s.end)}</td>
+              <td>${fmtMin(s.bmTotal)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
   }
 
   /* ===================== LOGIN ===================== */
