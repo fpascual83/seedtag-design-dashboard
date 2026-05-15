@@ -607,7 +607,20 @@
       display: flex; justify-content: space-between; align-items: baseline;
       gap: 14px; flex-wrap: wrap; margin-bottom: 14px;
     }
-    .ticket-detail .td-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .ticket-detail .td-title {
+      display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+      text-decoration: none; color: inherit;
+      padding: 4px 6px; margin: -4px -6px;
+      border-radius: 6px;
+      transition: background .15s;
+    }
+    .ticket-detail .td-title:hover { background: rgba(255,107,124,0.06); }
+    .ticket-detail .td-title:hover .td-summary { color: var(--white); }
+    .ticket-detail .td-jira-icon {
+      font-size: 11px; color: var(--grey-3);
+      letter-spacing: 0; align-self: center;
+    }
+    .ticket-detail .td-title:hover .td-jira-icon { color: var(--coral); }
     .ticket-detail .td-key {
       color: var(--coral); font-weight: 500; font-size: 16px;
     }
@@ -645,8 +658,12 @@
     .ticket-detail .td-metric .value {
       font-size: 16px; font-weight: 500; color: var(--white);
     }
-    .ticket-detail .td-metric.sla-yes .value { color: #6ee59e; }
-    .ticket-detail .td-metric.sla-no  .value { color: var(--coral); }
+    /* Green for "at or below median / within SLA / specs sent",
+       coral for the opposite. The whole card border tints, not just text. */
+    .ticket-detail .td-metric.ok  { border-color: rgba(110,229,158,0.45); background: rgba(110,229,158,0.06); }
+    .ticket-detail .td-metric.ok  .value { color: #6ee59e; }
+    .ticket-detail .td-metric.bad { border-color: rgba(255,107,124,0.45); background: rgba(255,107,124,0.06); }
+    .ticket-detail .td-metric.bad .value { color: var(--coral); }
     .ticket-detail .td-metric .hint {
       font-size: 10px; color: var(--grey-3); margin-top: 4px;
     }
@@ -658,9 +675,11 @@
     }
     .ticket-detail .td-history-toggle:hover { border-color: var(--coral); color: var(--white); }
     .ticket-detail .td-actions {
-      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+      display: flex; gap: 10px; align-items: center;
+      justify-content: space-between; flex-wrap: wrap;
     }
     .ticket-detail .td-actions .wildcard-btn { padding: 6px 14px; font-size: 11px; }
+    .ticket-detail .td-actions .wildcard-btn { margin-left: auto; }
     .modal-context {
       font-size: 12px; color: var(--grey-1);
       padding: 8px 10px; border-radius: 6px;
@@ -1212,6 +1231,19 @@
     <main>
       <div id="errorBanner" class="error-banner"></div>
 
+      <!-- Quick ticket lookup. Searches the loaded table by key + summary on
+           the client. Click a row to open a detail card with live computed
+           metrics (1st delivery, design effort, waiting, SLA, full history).
+           Positioned above the SLA reference so it's the first thing a CSM
+           sees when they need to dig into a single ticket. -->
+      <div class="section-marker">F I N D &nbsp; A &nbsp; T I C K E T</div>
+      <div class="ticket-search">
+        <input type="text" id="ticketSearch" class="ticket-search-input"
+               placeholder="Search by key (SDS-21264) or summary keyword (Lenovo, Pinterest…)" autocomplete="off" />
+        <div class="ticket-search-results" id="ticketSearchResults"></div>
+        <div class="ticket-detail" id="ticketDetail" style="display:none"></div>
+      </div>
+
       <!-- SLA reference: highlights the CURRENT 1st-delivery SLA targets so
            CSMs always have them visible. Historical periods are kept below as
            secondary click-to-filter shortcuts. -->
@@ -1297,17 +1329,6 @@
             <div class="sub">includes waiting + corrections</div>
           </div>
         </div>
-      </div>
-
-      <!-- Quick ticket lookup. Searches the loaded table by key + summary on
-           the client. Click a row to open a detail card with live computed
-           metrics (1st delivery, design effort, waiting, SLA, full history). -->
-      <div class="section-marker">F I N D &nbsp; A &nbsp; T I C K E T</div>
-      <div class="ticket-search">
-        <input type="text" id="ticketSearch" class="ticket-search-input"
-               placeholder="Search by key (SDS-21264) or summary keyword (Lenovo, Pinterest…)" autocomplete="off" />
-        <div class="ticket-search-results" id="ticketSearchResults"></div>
-        <div class="ticket-detail" id="ticketDetail" style="display:none"></div>
       </div>
 
       <!-- Charts (public view) -->
@@ -1515,7 +1536,7 @@
           <h3 id="wcTitle">Wild card alert</h3>
           <button class="modal-close" id="wcClose" type="button" aria-label="Close">×</button>
         </div>
-        <div class="modal-note">Only country managers · limited monthly uses</div>
+        <div class="modal-note">Only country managers</div>
         <div class="modal-context" id="wcContext"></div>
         <form id="wcForm" class="modal-body">
           <label class="modal-field">
@@ -2870,46 +2891,62 @@ They still appear in the ticket table below.`;
     if (delivered && firstMin != null) {
       const ok = firstMin <= target;
       slaCell = ok ? "Yes" : "No";
-      slaClass = ok ? "sla-yes" : "sla-no";
+      slaClass = ok ? "ok" : "bad";
     }
     const dateShort = (iso) => iso ? new Date(iso).toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" }) : "—";
+    // Reference medians from the loaded dashboard payload — used to color the
+    // metric cards green (≤ median) or red (> median).
+    const k = (STATE.data && STATE.data.kpis) || {};
+    const isProp = /_PROP_/.test(row.summary || "");
+    const medianFirst  = isProp ? k.avg_design_first_prop_min : k.avg_design_first_camp_combined_min;
+    const medianEffort = isProp ? k.avg_design_last_prop_min  : k.avg_design_last_camp_combined_min;
+    const medianTotal  = isProp ? k.avg_total_prop_min        : k.avg_total_camp_min;
+    const medianWait   = k.avg_waiting_min;
+    const colorBelow = (v, ref) => (v == null || ref == null) ? "" : (v <= ref ? "ok" : "bad");
+    const effortClass = colorBelow(row.designLastMin, medianEffort);
+    const totalClass  = colorBelow(row.totalMin,      medianTotal);
+    const waitClass   = colorBelow(row.waitingMin,    medianWait);
+    const specsClass  = row.seedtagSpecs === "Sent" ? "ok"
+                      : (row.seedtagSpecs === "Not sent" || row.seedtagSpecs === "Not needed") ? "bad" : "";
+    const jiraUrl = "https://seedtag.atlassian.net/browse/" + encodeURIComponent(row.key);
     detail.classList.remove("show-history");
     detail.style.display = "block";
     detail.innerHTML = `
       <div class="td-head">
-        <div class="td-title">
+        <a class="td-title" href="${jiraUrl}" target="_blank" rel="noopener" title="Open ${escapeHtml(row.key)} in Jira">
           <span class="td-key">${escapeHtml(row.key)}</span>
           <span class="td-summary">${escapeHtml(row.summary || "")}</span>
-        </div>
+          <span class="td-jira-icon" aria-hidden="true">↗</span>
+        </a>
         <button class="td-close" id="tdClose">close</button>
       </div>
       <div class="td-metrics">
-        <div class="td-metric">
+        <div class="td-metric ${slaClass}">
           <div class="label">1st delivery</div>
           <div class="value">${fmtMin(firstMin)}</div>
           <div class="hint">${delivered ? "creation → first DONE / Waiting" : "still in progress"}</div>
         </div>
-        <div class="td-metric">
+        <div class="td-metric ${effortClass}">
           <div class="label">Design effort</div>
           <div class="value">${fmtMin(row.designLastMin)}</div>
-          <div class="hint">across all corrections</div>
+          <div class="hint">across all corrections · median ${fmtMin(medianEffort)}</div>
         </div>
-        <div class="td-metric">
+        <div class="td-metric ${totalClass}">
           <div class="label">Total time</div>
           <div class="value">${fmtMin(row.totalMin)}</div>
-          <div class="hint">creation → last DONE · incl. waiting</div>
+          <div class="hint">creation → last DONE · median ${fmtMin(medianTotal)}</div>
         </div>
-        <div class="td-metric">
+        <div class="td-metric ${waitClass}">
           <div class="label">Waiting for customer</div>
           <div class="value">${fmtMin(row.waitingMin)}</div>
-          <div class="hint">total time on customer side</div>
+          <div class="hint">customer side · median ${fmtMin(medianWait)}</div>
         </div>
         <div class="td-metric ${slaClass}">
           <div class="label">Within SLA</div>
           <div class="value">${slaCell}</div>
           <div class="hint">target ${Math.round(target/60)}h biz · ${isSpecs ? "CAMP w/ specs" : "everything else"}</div>
         </div>
-        <div class="td-metric">
+        <div class="td-metric ${specsClass}">
           <div class="label">Specs</div>
           <div class="value">${escapeHtml(row.seedtagSpecs || "—")}</div>
           <div class="hint">${escapeHtml(row.market || "—")} · created ${dateShort(row.createdAt)}</div>
