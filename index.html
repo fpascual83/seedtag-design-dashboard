@@ -819,20 +819,20 @@
             <div class="sub">active in Design + waiting customer</div>
           </div>
         </div>
-        <div class="kpi sla-card">
-          <div class="label">Median time to<br>1st delivery (SLA)</div>
-          <div class="split sla-split" id="kpiDesignFirstSplit"></div>
-          <div class="sub">creation → first DONE, business hours</div>
-        </div>
-        <div class="kpi sla-card">
-          <div class="label">Median total<br>design effort</div>
-          <div class="split sla-split" id="kpiDesignLastSplit"></div>
-          <div class="sub">incl. rework after corrections</div>
-        </div>
-        <div class="kpi">
-          <div class="label">Median waiting<br>for customer</div>
-          <div class="value" id="kpiWaiting">—</div>
-          <div class="sub">time on customer side</div>
+        <!-- Time-to-delivery card: pairs the SLA-clock median with the full
+             effort median, both split by CAMP / PROP. -->
+        <div class="kpi pipeline-card time-card">
+          <div class="pipeline-half">
+            <div class="label">Median time to<br>1st delivery (SLA)</div>
+            <div class="split sla-split" id="kpiDesignFirstSplit"></div>
+            <div class="sub">creation → first DONE, business hours</div>
+          </div>
+          <div class="pipeline-divider"></div>
+          <div class="pipeline-half">
+            <div class="label">Median total<br>design effort</div>
+            <div class="split sla-split" id="kpiDesignLastSplit"></div>
+            <div class="sub">incl. rework after corrections</div>
+          </div>
         </div>
         <div class="kpi sla-card">
           <div class="label">SLA compliance</div>
@@ -1308,12 +1308,9 @@ They still appear in the ticket table below.`;
         exNote.style.display = "none";
       }
     }
-    // kpiDesignFirst and kpiDesignLast no longer have a headline number —
-    // the CAMP / PROP pills below carry the values (see kpiDesignFirstSplit /
-    // kpiDesignLastSplit below). The "Delivered first time" card was removed:
-    // first_time_pct is still in the payload but is no longer rendered here.
-    $("kpiWaiting").innerHTML = (k.avg_waiting_min != null)
-      ? `${fmtMin(k.avg_waiting_min)} <span class="biz">biz · ${operatorTagLabel()}</span>` : "—";
+    // The cards "Delivered first time" and "Median waiting for customer" were
+    // removed from the public view. first_time_pct and avg_waiting_min are
+    // still in the payload but no longer rendered here.
     $("kpiInProgress").textContent = (k.in_progress || 0).toLocaleString();
     $("kpiInProgressSplit").innerHTML = `
       <span><span class="tag">ACTIVE</span><strong>${k.in_progress_active ?? 0}</strong></span>
