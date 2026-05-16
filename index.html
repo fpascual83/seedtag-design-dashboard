@@ -1670,7 +1670,7 @@
     // Google OAuth Client ID — created in console.cloud.google.com (Web app).
     // Authorized JS origin must include https://seedtagdesign.github.io
     // (and any local file:// preview). Only @seedtag.com emails accepted.
-    GOOGLE_CLIENT_ID: "PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com",
+    GOOGLE_CLIENT_ID: "324386746930-frmtjnt0daun9o5b18f7hk457ddieq4r.apps.googleusercontent.com",
     GOOGLE_HOSTED_DOMAIN: "seedtag.com",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
     CACHE_KEY: "sds-dashboard-v17",
@@ -3346,10 +3346,10 @@ They still appear in the ticket table below.`;
     };
   }
 
-  // Login gate temporarily disabled — IT is still provisioning the Google
-  // OAuth Client ID. Flip GATE_LOGIN to true once CONFIG.GOOGLE_CLIENT_ID is
-  // populated to re-enable the @seedtag.com sign-in screen.
-  const GATE_LOGIN = false;
+  // Google Sign-In gate. Only @seedtag.com accounts can access the dashboard
+  // (enforced by the `hd` hint + the post-decode domain check). Flip back to
+  // false if you ever need to bypass auth for debugging.
+  const GATE_LOGIN = true;
   document.addEventListener("DOMContentLoaded", () => {
     if (!GATE_LOGIN || getSessionUser()) {
       showApp();
