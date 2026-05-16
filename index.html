@@ -1611,9 +1611,10 @@
         <div class="modal-context" id="wcContext"></div>
         <form id="wcForm" class="modal-body">
           <label class="modal-field">
-            <span>Your name</span>
-            <input id="wcName" type="text" required maxlength="80" readonly
-                   title="Pulled from your Google login — sign out and back in to change it." />
+            <span>Your name *</span>
+            <input id="wcName" type="text" required maxlength="80"
+                   placeholder="e.g. María García · CM Spain"
+                   title="Will be locked to your Google account once sign-in is enabled." />
           </label>
           <label class="modal-field">
             <span>Subject</span>
@@ -2882,15 +2883,18 @@ They still appear in the ticket table below.`;
     if ((jiraFields || {}).high_value) bits.push(`HVC <strong>${escapeHtml(jiraFields.high_value)}</strong>`);
     if ((jiraFields || {}).budget_sds) bits.push(`Budget <strong>${escapeHtml(jiraFields.budget_sds)}</strong>`);
     ctx.innerHTML = bits.join(" · ");
-    // Pre-fill (read-only) with the signed-in user's name. Falls back to the
-    // email local-part if for some reason the name isn't available.
+    // Once Google Sign-In is wired up, pre-fill from the signed-in user.
+    // While login is disabled, leave the field editable so the CM can type.
     const u = getSessionUser();
     const nameInput = $("wcName");
     if (nameInput && u) {
       nameInput.value = u.name || (u.email ? u.email.split("@")[0] : "");
+      nameInput.readOnly = true;
+    } else if (nameInput) {
+      nameInput.readOnly = false;
     }
     modal.hidden = false;
-    setTimeout(() => $("wcSubject").focus(), 50);
+    setTimeout(() => (u ? $("wcSubject") : $("wcName")).focus(), 50);
   }
 
   /* ===================== TICKET LOOKUP =====================
@@ -3342,10 +3346,12 @@ They still appear in the ticket table below.`;
     };
   }
 
-  // Gate the dashboard behind @seedtag.com Google Sign-In. If the user has
-  // signed in already (sessionStorage), skip the lobby and boot straight in.
+  // Login gate temporarily disabled — IT is still provisioning the Google
+  // OAuth Client ID. Flip GATE_LOGIN to true once CONFIG.GOOGLE_CLIENT_ID is
+  // populated to re-enable the @seedtag.com sign-in screen.
+  const GATE_LOGIN = false;
   document.addEventListener("DOMContentLoaded", () => {
-    if (getSessionUser()) {
+    if (!GATE_LOGIN || getSessionUser()) {
       showApp();
       bootstrap();
     } else {
