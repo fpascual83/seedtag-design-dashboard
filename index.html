@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     :root {
       --coral: #FF6B7C;
@@ -61,7 +62,8 @@
     #login .lens.l2 { width: 380px; height: 380px; bottom: -140px; left: -120px; }
     #login .lens.l3 { width: 220px; height: 220px; top: 55%; left: 60%; opacity: .6; }
 
-    #login form {
+    #login form,
+    #login .login-card {
       position: relative;
       width: 100%; max-width: 380px;
       background: var(--card);
@@ -260,6 +262,19 @@
       display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
     }
     /* Soft "refreshing" indicator in header (no fullscreen overlay) */
+    .signed-as {
+      position: absolute; top: 24px; right: 40px;
+      font-size: 11px; color: var(--grey-3);
+      letter-spacing: 0.04em;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .signed-as button {
+      background: transparent; border: 1px solid var(--grey-5);
+      color: var(--grey-1); padding: 3px 10px; border-radius: 999px;
+      font: inherit; font-size: 10px; cursor: pointer;
+      text-transform: uppercase; letter-spacing: 0.12em;
+    }
+    .signed-as button:hover { border-color: var(--coral); color: var(--white); }
     .refreshing #lastUpdated::after {
       content: "  ·  refreshing…";
       color: var(--coral);
@@ -1184,20 +1199,25 @@
 </head>
 <body>
 
-  <!-- ================= LOGIN ================= -->
+  <!-- ================= LOGIN =================
+       Google Sign-In limited to @seedtag.com accounts. The button is rendered
+       by Google Identity Services and validated client-side (email_verified +
+       hosted-domain match). Server-side enforcement happens via the CORS
+       allow-list on the Worker — this is the lobby, not the vault. -->
   <div id="login">
     <div class="lens l1"></div>
     <div class="lens l2"></div>
     <div class="lens l3"></div>
-    <form id="loginForm" autocomplete="off">
+    <div class="login-card">
       <div class="marker">S D S &nbsp; S E R V I C E &nbsp; D A S H B O A R D</div>
       <h1>Welcome</h1>
-      <p>Enter the access password to continue.</p>
-      <label for="pwd">Password</label>
-      <input id="pwd" type="password" autofocus required />
-      <button type="submit">Enter</button>
+      <p>Sign in with your Seedtag Google account.</p>
+      <div id="googleBtn" style="margin-top: 18px;"></div>
       <div class="err" id="loginErr"></div>
-    </form>
+      <p class="login-hint" style="margin-top: 22px; font-size: 11px; color: var(--grey-3);">
+        Access is restricted to <strong>@seedtag.com</strong> accounts.
+      </p>
+    </div>
     <div class="wordmark">SEEDTAG</div>
   </div>
 
@@ -1276,6 +1296,7 @@
       </div>
 
       <div class="last-updated" id="lastUpdated">—</div>
+      <div class="signed-as" id="signedAs"></div>
     </header>
 
     <main>
@@ -1590,9 +1611,9 @@
         <div class="modal-context" id="wcContext"></div>
         <form id="wcForm" class="modal-body">
           <label class="modal-field">
-            <span>Your name *</span>
-            <input id="wcName" type="text" required maxlength="80"
-                   placeholder="e.g. María García · CM Spain" />
+            <span>Your name</span>
+            <input id="wcName" type="text" required maxlength="80" readonly
+                   title="Pulled from your Google login — sign out and back in to change it." />
           </label>
           <label class="modal-field">
             <span>Subject</span>
@@ -1645,7 +1666,11 @@
      ============================================================ */
 
   const CONFIG = {
-    PASSWORD: "SDS2026",
+    // Google OAuth Client ID — created in console.cloud.google.com (Web app).
+    // Authorized JS origin must include https://seedtagdesign.github.io
+    // (and any local file:// preview). Only @seedtag.com emails accepted.
+    GOOGLE_CLIENT_ID: "PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com",
+    GOOGLE_HOSTED_DOMAIN: "seedtag.com",
     API_BASE: "https://sds-jira-proxy.fernandopascual.workers.dev",
     CACHE_KEY: "sds-dashboard-v17",
     CACHE_TTL_MIN: 5,
@@ -2857,8 +2882,15 @@ They still appear in the ticket table below.`;
     if ((jiraFields || {}).high_value) bits.push(`HVC <strong>${escapeHtml(jiraFields.high_value)}</strong>`);
     if ((jiraFields || {}).budget_sds) bits.push(`Budget <strong>${escapeHtml(jiraFields.budget_sds)}</strong>`);
     ctx.innerHTML = bits.join(" · ");
+    // Pre-fill (read-only) with the signed-in user's name. Falls back to the
+    // email local-part if for some reason the name isn't available.
+    const u = getSessionUser();
+    const nameInput = $("wcName");
+    if (nameInput && u) {
+      nameInput.value = u.name || (u.email ? u.email.split("@")[0] : "");
+    }
     modal.hidden = false;
-    setTimeout(() => $("wcName").focus(), 50);
+    setTimeout(() => $("wcSubject").focus(), 50);
   }
 
   /* ===================== TICKET LOOKUP =====================
@@ -3171,11 +3203,84 @@ They still appear in the ticket table below.`;
     `;
   }
 
-  /* ===================== LOGIN ===================== */
-  function checkLoggedIn() { return sessionStorage.getItem("sds_authed") === "1"; }
-  function showApp() { $("login").style.display = "none"; $("app").hidden = false; }
+  /* ===================== LOGIN =====================
+     Google Sign-In limited to the @seedtag.com hosted domain. We decode the
+     JWT credential, verify email_verified + the hosted-domain claim, then
+     store the user info in sessionStorage. The Wild card form reads the name
+     from this store and renders it read-only. */
+  const SESSION_USER_KEY = "sds_user";
+  function getSessionUser() {
+    try { return JSON.parse(sessionStorage.getItem(SESSION_USER_KEY) || "null"); }
+    catch (_) { return null; }
+  }
+  function decodeJwt(token) {
+    try {
+      const payload = token.split(".")[1];
+      // base64url → base64 → JSON
+      const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+      return JSON.parse(decodeURIComponent(escape(json)));
+    } catch (_) { return null; }
+  }
+  function handleCredentialResponse(response) {
+    const data = decodeJwt(response && response.credential);
+    const errEl = $("loginErr");
+    if (!data) { if (errEl) errEl.textContent = "Could not read Google response."; return; }
+    const email  = (data.email || "").toLowerCase();
+    const domain = email.split("@")[1] || "";
+    if (!data.email_verified || domain !== CONFIG.GOOGLE_HOSTED_DOMAIN) {
+      if (errEl) errEl.textContent = `Only @${CONFIG.GOOGLE_HOSTED_DOMAIN} accounts can access this dashboard.`;
+      // Sign them out of GIS to prevent stuck state.
+      try { google.accounts.id.disableAutoSelect(); } catch (_) {}
+      return;
+    }
+    const user = { name: data.name || data.given_name || email, email, picture: data.picture };
+    sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
+    showApp();
+    bootstrap();
+  }
+  function renderGoogleButton() {
+    if (typeof google === "undefined" || !google.accounts) {
+      // GIS script not loaded yet; retry shortly.
+      setTimeout(renderGoogleButton, 200);
+      return;
+    }
+    const placeholder = "PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com";
+    const errEl = $("loginErr");
+    if (CONFIG.GOOGLE_CLIENT_ID === placeholder) {
+      if (errEl) errEl.innerHTML = "Sign-in not configured yet.<br><span style='color:var(--grey-3)'>Set <code>CONFIG.GOOGLE_CLIENT_ID</code> in index.html.</span>";
+      return;
+    }
+    google.accounts.id.initialize({
+      client_id: CONFIG.GOOGLE_CLIENT_ID,
+      callback: handleCredentialResponse,
+      hd: CONFIG.GOOGLE_HOSTED_DOMAIN, // hosted-domain hint (UX only — we re-check)
+      auto_select: false,
+      cancel_on_tap_outside: true,
+    });
+    google.accounts.id.renderButton($("googleBtn"), {
+      type: "standard", theme: "filled_black", size: "large",
+      shape: "pill", text: "signin_with", logo_alignment: "left",
+    });
+    // Optional: surface One Tap if the user already has a Google session.
+    try { google.accounts.id.prompt(); } catch (_) {}
+  }
+  function showLogin() { $("login").style.display = "flex"; $("app").hidden = true; }
+  function showApp()   { $("login").style.display = "none"; $("app").hidden = false; }
 
   async function bootstrap() {
+    // Header chip with "signed in as / sign out".
+    const u = getSessionUser();
+    const sa = $("signedAs");
+    if (sa && u) {
+      sa.innerHTML = `Signed in as <strong style="color:var(--grey-1)">${escapeHtml(u.name || u.email)}</strong>` +
+        ` <button type="button" id="btnSignOut">Sign out</button>`;
+      const out = $("btnSignOut");
+      if (out) out.addEventListener("click", () => {
+        sessionStorage.removeItem(SESSION_USER_KEY);
+        try { google.accounts.id.disableAutoSelect(); } catch (_) {}
+        location.reload();
+      });
+    }
     // From defaults to the earliest data point we have in D1 (2026-04-01).
     const today = new Date();
     $("filterFrom").min = CONFIG.MIN_DATE;
@@ -3237,10 +3342,16 @@ They still appear in the ticket table below.`;
     };
   }
 
-  // Password gate removed — public dashboard. Worker enforces CORS allow-list.
+  // Gate the dashboard behind @seedtag.com Google Sign-In. If the user has
+  // signed in already (sessionStorage), skip the lobby and boot straight in.
   document.addEventListener("DOMContentLoaded", () => {
-    showApp();
-    bootstrap();
+    if (getSessionUser()) {
+      showApp();
+      bootstrap();
+    } else {
+      showLogin();
+      renderGoogleButton();
+    }
   });
   </script>
 </body>
