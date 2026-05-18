@@ -1121,13 +1121,21 @@
       padding: 4px 8px; border-radius: 999px;
     }
     .modal-close:hover { color: var(--coral); background: rgba(255,107,124,0.08); }
+    /* Yellow notice on the Wild card modal so CSMs can't miss the audience
+       restriction. Bold + uppercase + amber palette → impossible to ignore. */
     .modal-note {
-      font-size: 10px; color: var(--coral);
+      font-size: 12px; font-weight: 600;
+      color: #FFD23F;
       text-transform: uppercase; letter-spacing: 0.18em;
-      margin-bottom: 16px;
-      padding: 6px 10px; border-radius: 6px;
-      background: rgba(255,107,124,0.08);
-      display: inline-block;
+      margin-bottom: 18px;
+      padding: 10px 14px; border-radius: 8px;
+      background: rgba(255,210,63,0.12);
+      border: 1px solid rgba(255,210,63,0.4);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .modal-note::before {
+      content: "⚠";
+      font-size: 16px; line-height: 1;
     }
     .modal-field {
       display: flex; flex-direction: column; gap: 4px;
