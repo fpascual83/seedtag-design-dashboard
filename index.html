@@ -879,6 +879,9 @@
     }
     .industry-picker:focus { outline: none; }
     .chart-card:has(#chartDeliveryByMarket) .chart-wrap { height: 380px; }
+    /* Industry mix uses one stacked bar per month — the legend grows with the
+       number of sectors, so give it extra room. */
+    .chart-card:has(#chartIndustry) .chart-wrap { height: 420px; }
     .chart-empty {
       display: flex; align-items: center; justify-content: center;
       height: 100%;
@@ -1470,12 +1473,12 @@
           <div class="chart-wrap"><canvas id="chartByRep"></canvas></div>
         </div>
 
-        <!-- Industry × Month (CAMP + PROP stacked), with industry switch -->
+        <!-- Industry mix per month: stacked bars where each segment is an
+             industry. Quick way to see which sector demanded most in each
+             period at a glance. -->
         <div class="chart-card dark">
-          <h3>By Industry
-            <select id="industryPicker" class="industry-picker"></select>
-          </h3>
-          <div class="chart-sub" id="industrySub">monthly volume · CAMP + PROP stacked</div>
+          <h3>Industry mix by month</h3>
+          <div class="chart-sub" id="industrySub">monthly ticket volume · stacked by industry · sorted by total demand</div>
           <div class="chart-wrap"><canvas id="chartIndustry"></canvas></div>
         </div>
 
@@ -2123,52 +2126,100 @@ They still appear in the ticket table below.`;
     }
   }
 
-  /* Industry × Month chart with a single-industry switch.
-     Selected industry persists in STATE.industryPick (or localStorage). */
+  /* Industry mix per month — stacked bars, one segment per industry. Sorted
+     by total volume so the most-demanded sectors anchor the bottom of each
+     bar and the legend reads from biggest to smallest. Quick scan of "which
+     industry pulled the design team most this month". */
+  const INDUSTRY_PALETTE = [
+    "#FF6B7C", // coral (primary brand)
+    "#8DBEB6", // teal
+    "#FFD23F", // amber
+    "#A78BFA", // violet
+    "#6EE59E", // green
+    "#60A5FA", // blue
+    "#F97316", // orange
+    "#F472B6", // pink
+    "#34D399", // emerald
+    "#FBBF24", // yellow
+    "#A3A3A3", // neutral grey (catch-all)
+    "#7C3AED", // deep purple
+  ];
   function renderIndustry(canvasId, payload) {
     const industries = (payload.industries || []).filter(x => x !== "(unset)");
     const months     = payload.months || [];
     const data       = payload.data   || {};
-    // Populate the picker (only on first render or when list changes).
-    const picker = document.getElementById("industryPicker");
-    if (picker) {
-      const prev = STATE.industryPick || localStorage.getItem("sds_industry") || industries[0];
-      const want = industries.includes(prev) ? prev : (industries[0] || "");
-      if (picker.dataset.options !== industries.join("|")) {
-        picker.innerHTML = industries.map(i => `<option value="${escapeHtml(i)}"${i===want?" selected":""}>${escapeHtml(i)}</option>`).join("");
-        picker.dataset.options = industries.join("|");
-        picker.onchange = () => {
-          STATE.industryPick = picker.value;
-          try { localStorage.setItem("sds_industry", picker.value); } catch (_) {}
-          renderIndustry(canvasId, payload);
-        };
-      } else {
-        picker.value = want;
-      }
-      STATE.industryPick = want;
+    // Total tickets per industry across all months, used both for sorting the
+    // stack order and for the legend.
+    const totalsByIndustry = industries.map(name => ({
+      name,
+      total: months.reduce((a, m) => a + (((data[name] || {})[m] || {}).total || 0), 0),
+    })).sort((a, b) => b.total - a.total);
+
+    const monthsTotal = months.reduce((a, m) => {
+      return a + industries.reduce((b, ind) => b + (((data[ind] || {})[m] || {}).total || 0), 0);
+    }, 0);
+    const sub = document.getElementById("industrySub");
+    if (sub) {
+      sub.textContent = totalsByIndustry.length
+        ? `${monthsTotal} tickets across ${months.length} month${months.length === 1 ? "" : "s"} · ${totalsByIndustry.length} industries · sorted by demand`
+        : "no industry data";
     }
-    const chosen = STATE.industryPick || industries[0];
-    const sub    = document.getElementById("industrySub");
-    const bucketFor = (m) => (data[chosen] && data[chosen][m]) || { camp:0, prop:0, other:0, total:0 };
-    const totalAll = months.reduce((a,m) => a + bucketFor(m).total, 0);
-    if (sub) sub.textContent = chosen
-      ? `${chosen} · ${totalAll} tickets across ${months.length} month${months.length===1?"":"s"} · CAMP + PROP stacked`
-      : "no industry data";
+    if (!totalsByIndustry.length) { makeChart(canvasId, { type: "bar", data: { labels: [], datasets: [] } }); return; }
+
+    // Build one dataset per industry. Reverse so the biggest is at the bottom
+    // visually (Chart.js stacks top-down by dataset order — reversed = biggest
+    // on the bottom of the bar).
+    const ordered = totalsByIndustry.slice().reverse();
+    const datasets = ordered.map((entry, idx) => {
+      // Pick a color from the palette, but always paint the biggest in coral.
+      const paletteIdx = (totalsByIndustry.length - 1 - idx) % INDUSTRY_PALETTE.length;
+      return {
+        label: entry.name,
+        data: months.map(m => ((data[entry.name] || {})[m] || {}).total || 0),
+        backgroundColor: INDUSTRY_PALETTE[paletteIdx],
+        stack: "industry",
+        borderWidth: 0,
+      };
+    });
+
     makeChart(canvasId, {
       type: "bar",
-      data: {
-        labels: months,
-        datasets: [
-          { label: "Campaigns",  data: months.map(m => bucketFor(m).camp),  backgroundColor: COLOR.coral, stack: "k", borderWidth: 0 },
-          { label: "Proposals",  data: months.map(m => bucketFor(m).prop),  backgroundColor: "#FFFFFF",   stack: "k", borderWidth: 0 },
-          { label: "Other",      data: months.map(m => bucketFor(m).other), backgroundColor: COLOR.grey3, stack: "k", borderWidth: 0 },
-        ],
-      },
+      data: { labels: months, datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
-          legend: { labels: { color: COLOR.grey3, font: { size: 11 } } },
-          tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}` } },
+          legend: {
+            position: "bottom",
+            labels: {
+              color: COLOR.grey3, font: { size: 11 },
+              boxWidth: 10, padding: 10,
+              // Render legend in the natural sort order (biggest first).
+              sort: (a, b) => {
+                const A = totalsByIndustry.findIndex(x => x.name === a.text);
+                const B = totalsByIndustry.findIndex(x => x.name === b.text);
+                return A - B;
+              },
+            },
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const m = ctx.label;
+                const total = industries.reduce((a, ind) =>
+                  a + (((data[ind] || {})[m] || {}).total || 0), 0);
+                const v = ctx.parsed.y || 0;
+                const pct = total ? Math.round(v / total * 100) : 0;
+                return `${ctx.dataset.label}: ${v} (${pct}%)`;
+              },
+              footer: items => {
+                if (!items.length) return "";
+                const m = items[0].label;
+                const total = industries.reduce((a, ind) =>
+                  a + (((data[ind] || {})[m] || {}).total || 0), 0);
+                return `Total ${m}: ${total}`;
+              },
+            },
+          },
         },
         scales: {
           x: { stacked: true, grid: { display: false }, ticks: { color: COLOR.grey3, autoSkip: false } },
