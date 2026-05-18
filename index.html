@@ -2849,22 +2849,9 @@ They still appear in the ticket table below.`;
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error("HTTP " + res.status);
-        // Open the email client too — the user can review/edit before sending.
-        const TO = ["design", "alert"].join("_") + "@seedtag.com";
-        const emailLines = [
-          body, "",
-          `— ${name}`,
-          "",
-          `Ticket: ${payload.ticketUrl}`,
-          payload.summary ? `Summary: ${payload.summary}` : "",
-          payload.market  ? `Operator Entity: ${payload.market}` : "",
-          payload.hvc     ? `HVC: ${payload.hvc}` : "",
-          payload.budget  ? `Budget (SDS): ${payload.budget}` : "",
-        ].filter(Boolean).join("\n");
-        const mailUrl = "mailto:" + encodeURIComponent(TO)
-          + "?subject=" + encodeURIComponent("[Wild card] " + (subject || `${WILDCARD.ticketKey} · ${name}`))
-          + "&body="    + encodeURIComponent(emailLines);
-        window.location.href = mailUrl;
+        // Slack delivery succeeded — close the modal. The mailto fallback is
+        // intentionally removed: opening the OS mail client every time the
+        // CM hit Send was friction with no upside now that Slack is live.
         hide();
       } catch (err) {
         alert("Could not send alert: " + err.message);
