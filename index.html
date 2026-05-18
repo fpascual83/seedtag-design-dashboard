@@ -1064,9 +1064,9 @@
     }
     footer .meta { font-size: 11px; color: var(--grey-3); letter-spacing: 0.06em; }
 
-    /* Wild card alert: centered call-to-action at the bottom of the dashboard
-       plus a modal that prepares a mailto: message. The recipient address
-       lives only inside the submit handler so it never appears in the UI. */
+    /* Wild card alert: a button inside each ticket detail opens a modal that
+       POSTs to the Worker, which fans the alert into the public #design-alerts
+       Slack channel. Communication is web-only — no email involvement. */
     .wildcard-cta {
       display: flex; flex-direction: column; align-items: center; gap: 8px;
       margin: 48px 0 32px;
@@ -1607,8 +1607,8 @@
 
     </main>
 
-    <!-- Wild-card modal. mailto: keeps the recipient hidden from the UI; it
-         only shows when the user's mail client opens the composed message. -->
+    <!-- Wild-card modal. Submitting POSTs to /api/wildcard on the Worker,
+         which forwards the alert to the public #design-alerts Slack channel. -->
     <div class="modal-backdrop" id="wildcardModal" hidden>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="wcTitle">
         <div class="modal-head">
@@ -2802,8 +2802,9 @@ They still appear in the ticket table below.`;
   /* ===================== WILD CARD =====================
      The button lives inside the ticket detail panel — opening the modal
      primes it with the active ticket's metadata (HVC, Budget, Operator
-     Entity, Jira URL). Submit hits the Worker which fans the alert out to
-     Slack and email; the recipient address is never exposed in the DOM. */
+     Entity, Jira URL). Submit POSTs to /api/wildcard on the Worker, which
+     forwards the alert to the #design-alerts Slack channel. Web-only —
+     no email path involved. */
   const WILDCARD = { ticketKey: null, row: null, jiraFields: null };
 
   function setupWildcard() {
@@ -2849,9 +2850,8 @@ They still appear in the ticket table below.`;
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error("HTTP " + res.status);
-        // Slack delivery succeeded — close the modal. The mailto fallback is
-        // intentionally removed: opening the OS mail client every time the
-        // CM hit Send was friction with no upside now that Slack is live.
+        // Slack delivery succeeded — close the modal. Web-only communication
+        // by design (no email anywhere).
         hide();
       } catch (err) {
         alert("Could not send alert: " + err.message);
